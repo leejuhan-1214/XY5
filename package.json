@@ -1,0 +1,13 @@
+{
+  "name": "urban-heat-potential-lab",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive AI urban heat-island potential and tracer-flow simulator",
+  "scripts": {
+    "start": "npx serve .",
+    "test": "node tests/test_engine.mjs"
+  },
+  "license": "MIT",
+  "engines": { "node": ">=18" }
+}

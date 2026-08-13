@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AI 도시 열섬 설계와 열퍼텐셜 유동을 탐색하는 브라우저 시뮬레이터">
+  <meta name="theme-color" content="#07131c">
+  <title>Urban Heat Potential Lab</title>
+  <link rel="stylesheet" href="src/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 이동</a>
+  <header class="site-header">
+    <div>
+      <p class="eyebrow">URBAN HEAT POTENTIAL LAB</p>
+      <h1>열섬을 ‘지형’과 ‘흐름’으로 읽는 AI 도시설계</h1>
+      <p class="subtitle">동일한 기상·도시형상 아래에서 재료와 배치만 바꾸고, 열퍼텐셜 봉우리와 가상 열 추적자의 체류시간을 비교합니다.</p>
+    </div>
+    <div class="header-actions">
+      <span id="status" class="status" aria-live="polite">모델 준비 중</span>
+      <a class="button secondary" href="methodology.html">방법론 보기</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="control-band" aria-labelledby="experiment-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">CONTROLLED EXPERIMENT</p>
+          <h2 id="experiment-title">변인 통제</h2>
+        </div>
+        <button id="run-button" class="button primary" type="button">AI 최적화 다시 실행</button>
+      </div>
+      <div class="variable-grid">
+        <article>
+          <strong>독립변인</strong>
+          <p>개입 면적, 목적함수, 지붕·지면 재료</p>
+        </article>
+        <article>
+          <strong>통제변인</strong>
+          <p>24×18 격자, 건물형상, 24시간 기상, 초기조건, 시드 8132026</p>
+        </article>
+        <article>
+          <strong>종속변인</strong>
+          <p>표면온도, 퍼텐셜 P95, 추적자 체류, 야간 현열, 고온노출</p>
+        </article>
+      </div>
+
+      <div class="controls">
+        <label>
+          <span>시각 <output id="hour-output">15시</output></span>
+          <input id="hour" type="range" min="0" max="23" value="15">
+        </label>
+        <label>
+          <span>15시 기온 <output id="air-output">34°C</output></span>
+          <input id="air" type="range" min="30" max="40" value="34">
+        </label>
+        <label>
+          <span>최대 일사량 <output id="solar-output">850 W/m²</output></span>
+          <input id="solar" type="range" min="550" max="1050" step="25" value="850">
+        </label>
+        <label>
+          <span>수분 가용도 <output id="moisture-output">60%</output></span>
+          <input id="moisture" type="range" min="0" max="100" step="5" value="60">
+        </label>
+        <label>
+          <span>변경 허용 면적 <output id="budget-output">18%</output></span>
+          <input id="budget" type="range" min="5" max="35" value="18">
+        </label>
+        <label>
+          <span>주풍향 <output id="wind-output">서풍</output></span>
+          <input id="wind" type="range" min="0" max="315" step="45" value="0">
+        </label>
+        <label>
+          <span>최적화 목표</span>
+          <select id="objective">
+            <option value="exposure" selected>보행자 고온노출 최소</option>
+            <option value="potential">열퍼텐셜 봉우리 최소</option>
+            <option value="residence">열 추적자 체류시간 최소</option>
+            <option value="night">야간 열방출 최소</option>
+          </select>
+        </label>
+        <label>
+          <span>시각화 레이어</span>
+          <select id="layer">
+            <option value="potential" selected>열퍼텐셜 + 등고선</option>
+            <option value="temperature">지표온도</option>
+            <option value="materials">재료·토지피복</option>
+            <option value="information">정보행렬 강도</option>
+          </select>
+        </label>
+        <label>
+          <span>위성·드론 배경 영상</span>
+          <input id="basemap" type="file" accept="image/png,image/jpeg,image/webp">
+        </label>
+        <label>
+          <span>열 레이어 불투명도 <output id="opacity-output">76%</output></span>
+          <input id="map-opacity" type="range" min="35" max="100" value="76">
+        </label>
+        <label class="switch-label">
+          <input id="particles" type="checkbox" checked>
+          <span>가상 열 추적자 애니메이션</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="metric-grid" aria-label="주요 비교 결과">
+      <article class="metric">
+        <span>보행면 평균 열퍼텐셜</span>
+        <strong id="metric-potential">-</strong>
+        <small id="metric-potential-delta">기준 대비</small>
+      </article>
+      <article class="metric">
+        <span>열 추적자 평균 체류</span>
+        <strong id="metric-residence">-</strong>
+        <small id="metric-residence-delta">기준 대비</small>
+      </article>
+      <article class="metric">
+        <span>20–24시 현열 방출</span>
+        <strong id="metric-night">-</strong>
+        <small id="metric-night-delta">기준 대비</small>
+      </article>
+      <article class="metric">
+        <span>고온노출 인구</span>
+        <strong id="metric-exposure">-</strong>
+        <small id="metric-exposure-delta">기준 대비</small>
+      </article>
+    </section>
+
+    <section class="comparison" aria-labelledby="map-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">POTENTIAL LANDSCAPE</p>
+          <h2 id="map-title">정보행렬 기반 열퍼텐셜 지도</h2>
+        </div>
+        <div id="legend" class="legend" aria-label="지도 범례"></div>
+      </div>
+      <div class="map-grid">
+        <figure>
+          <figcaption><strong>기준 도시</strong><span>아스팔트·콘크리트 중심</span></figcaption>
+          <div class="canvas-shell"><canvas id="baseline-map" aria-label="기준 도시 열퍼텐셜 지도"></canvas></div>
+        </figure>
+        <figure>
+          <figcaption><strong>AI 재배치 도시</strong><span>냉각거점·회랑·쿨루프 적용</span></figcaption>
+          <div class="canvas-shell"><canvas id="optimized-map" aria-label="AI 재배치 도시 열퍼텐셜 지도"></canvas></div>
+        </figure>
+      </div>
+      <p id="cell-detail" class="cell-detail" aria-live="polite">지도를 가리키면 셀의 정보행렬 Sᵢⱼ = (T, M, u, v, H, W, α)을 확인할 수 있습니다.</p>
+      <div class="flow-equation" aria-label="열 유속 설명">
+        <span>확산</span><code>−D∇Φ</code><span>+</span><span>바람 이류</span><code>λv</code><span>=</span><strong>순 열유속 J</strong>
+      </div>
+    </section>
+
+    <section class="analysis-grid">
+      <article class="panel">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">DIURNAL PROFILE</p><h2>24시간 변화</h2></div>
+          <div class="line-legend"><span class="base-line">기준</span><span class="opt-line">AI 설계</span></div>
+        </div>
+        <canvas id="profile-chart" class="chart" aria-label="24시간 열퍼텐셜 비교 그래프"></canvas>
+      </article>
+      <article class="panel">
+        <p class="eyebrow">AI PIPELINE</p>
+        <h2>핫스폿에서 냉각회랑까지</h2>
+        <ol class="pipeline">
+          <li><span>1</span><div><strong>DBSCAN</strong><small id="pipe-dbscan">열 군집 탐지</small></div></li>
+          <li><span>2</span><div><strong>MCLP</strong><small id="pipe-mclp">냉각 거점 선정</small></div></li>
+          <li><span>3</span><div><strong>유전 알고리즘</strong><small id="pipe-ga">재료·녹지 조합 탐색</small></div></li>
+          <li><span>4</span><div><strong>PyTorch 대응 CA</strong><small id="pipe-ca">[시간, 채널, 행, 열] 텐서 연산</small></div></li>
+        </ol>
+      </article>
+    </section>
+
+    <section class="materials" aria-labelledby="materials-title">
+      <div class="section-heading compact">
+        <div><p class="eyebrow">MATERIAL ABSTRACTION</p><h2 id="materials-title">재료를 5개 열 변수로 단순화</h2></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>표면</th><th>태양반사율 α</th><th>열방사율 ε</th><th>열저장</th><th>증발·투수</th><th>출처 구분</th></tr></thead>
+          <tbody id="material-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="caveat" aria-labelledby="meaning-title">
+      <div><p class="eyebrow">INTERPRETATION</p><h2 id="meaning-title">입자는 비유이고, 유속은 계산입니다</h2></div>
+      <p>점들은 실제 분자가 아니라 열에너지의 순전달을 보여주는 가상 추적자입니다. 지표온도(LST)는 보행 높이 대기온도와 다르므로 이 결과는 설계안 선별용 1차 모델입니다. 실제 적용 전 현장 센서, 위성 LST, 건물 높이, 바람 관측으로 보정하고 CFD·WRF·ENVI-met 등의 상세모델로 교차검증해야 합니다.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Urban Heat Potential Lab · 연구·교육용 오픈소스 프로토타입</p>
+    <nav aria-label="프로젝트 문서"><a href="README.md">README</a><a href="methodology.html">방법론</a><a href="LICENSE">MIT License</a></nav>
+  </footer>
+
+  <noscript>이 시뮬레이터를 사용하려면 JavaScript가 필요합니다.</noscript>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
