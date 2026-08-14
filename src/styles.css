@@ -44,6 +44,8 @@ section { margin-bottom: 22px; }
 .variable-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; margin-bottom: 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--line); }
 .variable-grid article { padding: 14px; background: var(--surface-2); }
 .variable-grid p { margin: 6px 0 0; color: var(--muted); font-size: .86rem; line-height: 1.5; }
+.dataset-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: -6px 0 20px; padding: 11px 13px; border-left: 3px solid var(--cyan); background: rgb(86 216 221 / .07); color: var(--muted); font-size: .82rem; line-height: 1.45; }
+.dataset-summary strong { color: var(--text); }
 .controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 18px; }
 .controls label { display: grid; align-content: start; gap: 8px; min-width: 0; color: var(--muted); font-size: .82rem; }
 .controls label > span { display: flex; justify-content: space-between; gap: 10px; }

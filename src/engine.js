@@ -17,7 +17,21 @@ export const mean = values => values.reduce((sum, value) => sum + value, 0) / Ma
 const xy = i => [i % GRID_W, Math.floor(i / GRID_W)];
 const distance = (a, b) => { const [ax, ay] = xy(a), [bx, by] = xy(b); return Math.hypot(ax - bx, ay - by); };
 
-export function createCity() {
+export function createCity(dataset = null) {
+  if (dataset?.surface?.material?.length === CELL_COUNT) {
+    return {
+      types: Uint8Array.from(dataset.surface.material),
+      population: Float32Array.from(dataset.demand.activityProxy),
+      vulnerability: Float32Array.from(dataset.demand.vulnerabilityProxy),
+      heights: Float32Array.from(dataset.surface.buildingHeightM),
+      buildings: Uint8Array.from(dataset.surface.building),
+      insideBoundary: Uint8Array.from(dataset.surface.insideBoundary),
+      observedLST: Float32Array.from(dataset.remoteSensing.lstC),
+      ndvi: Float32Array.from(dataset.remoteSensing.ndvi),
+      ndbi: Float32Array.from(dataset.remoteSensing.ndbi),
+      dataset,
+    };
+  }
   const types = new Uint8Array(CELL_COUNT);
   const population = new Float32Array(CELL_COUNT);
   const vulnerability = new Float32Array(CELL_COUNT);
@@ -37,7 +51,7 @@ export function createCity() {
   return { types, population, vulnerability, heights, buildings };
 }
 
-export const airAt = (hour, settings) => settings.peakAir - 5.5 + 5.5 * Math.sin(2 * Math.PI * (hour - 9) / 24);
+export const airAt = (hour, settings) => settings.weather?.temperature_2m?.[Math.max(0, Math.min(23, Math.floor(hour)))] ?? settings.peakAir - 5.5 + 5.5 * Math.sin(2 * Math.PI * (hour - 9) / 24);
 const buildingAt = (types, i) => Boolean(byId(types[i]).building);
 
 function shadeAt(i, hour, types, city) {
@@ -76,7 +90,8 @@ export function simulate(types, settings, city) {
   for (let step = 0; step < 144; step += 1) {
     const hour = (step + .5) / 6, air = airAt(hour, settings);
     const solarFactor = Math.max(0, Math.sin(Math.PI * (hour - 6) / 12));
-    const solar = settings.solar * solarFactor, sky = air - (solarFactor > 0 ? 8 : 13), hConv = 10.2;
+    const observedSolar = settings.weather?.shortwave_radiation?.[Math.max(0, Math.min(23, Math.floor(hour)))];
+    const solar = observedSolar ?? settings.solar * solarFactor, sky = air - (solarFactor > 0 ? 8 : 13), hConv = 10.2;
     const absorbedStep = new Float32Array(CELL_COUNT);
     for (let i = 0; i < CELL_COUNT; i += 1) {
       const material = byId(types[i]), x = i % GRID_W, y = Math.floor(i / GRID_W);
@@ -106,7 +121,17 @@ export function simulate(types, settings, city) {
       sensible.push(flux / Math.max(1, area));
     }
   }
-  return { hourly, sensible, solarAbsorbed };
+  let calibrationBias = null;
+  if (city.observedLST && settings.calibrateLST !== false) {
+    const observedHour = settings.observedHour ?? 11;
+    calibrationBias = settings.calibrationBias ? Float32Array.from(settings.calibrationBias) : new Float32Array(CELL_COUNT);
+    if (!settings.calibrationBias) for (let i = 0; i < CELL_COUNT; i += 1) calibrationBias[i] = city.observedLST[i] - hourly[observedHour][i];
+    for (let hour = 0; hour < 24; hour += 1) {
+      const weight = Math.max(.12, Math.exp(-((hour - observedHour) ** 2) / 35));
+      for (let i = 0; i < CELL_COUNT; i += 1) hourly[hour][i] += calibrationBias[i] * weight;
+    }
+  }
+  return { hourly, sensible, solarAbsorbed, calibrationBias };
 }
 
 export function potentialField(types, result, hour, settings, city) {
@@ -180,15 +205,16 @@ const seededRandom = seed => { let state = seed >>> 0; return () => { state += 0
 
 export function optimize(baseTypes, baseResult, settings, city) {
   const peakPotential = potentialField(baseTypes, baseResult, 15, settings, city);
-  const walkable = Array.from(peakPotential).filter((_, i) => !city.buildings[i]);
+  const active = i => !city.insideBoundary || Boolean(city.insideBoundary[i]);
+  const walkable = Array.from(peakPotential).filter((_, i) => active(i) && !city.buildings[i]);
   const threshold = percentile(walkable, .72), hot = [];
-  for (let i = 0; i < CELL_COUNT; i += 1) if (!city.buildings[i] && peakPotential[i] >= threshold && city.population[i] > 1.5) hot.push(i);
+  for (let i = 0; i < CELL_COUNT; i += 1) if (active(i) && !city.buildings[i] && peakPotential[i] >= threshold && city.population[i] > 1.5) hot.push(i);
   const clusters = dbscan(hot, 1.55, 3);
   const candidates = [];
-  for (let i = 0; i < CELL_COUNT; i += 1) if (!city.buildings[i] && baseTypes[i] !== MATERIAL.grass.id && baseTypes[i] !== MATERIAL.tree.id) candidates.push(i);
+  for (let i = 0; i < CELL_COUNT; i += 1) if (active(i) && !city.buildings[i] && baseTypes[i] !== MATERIAL.grass.id && baseTypes[i] !== MATERIAL.tree.id) candidates.push(i);
   const weights = new Map(hot.map(i => [i, city.population[i] * city.vulnerability[i] * Math.max(1, peakPotential[i] - threshold + 1)]));
   const hubs = greedyMCLP(candidates, hot, weights, Math.max(3, Math.min(8, Math.round(settings.budget / 4))), 3.2);
-  const eligible = Array.from({ length: CELL_COUNT }, (_, i) => i).filter(i => baseTypes[i] !== MATERIAL.grass.id && baseTypes[i] !== MATERIAL.tree.id);
+  const eligible = Array.from({ length: CELL_COUNT }, (_, i) => i).filter(i => active(i) && baseTypes[i] !== MATERIAL.grass.id && baseTypes[i] !== MATERIAL.tree.id);
   const budgetCount = Math.max(1, Math.round(eligible.length * settings.budget / 100));
   const genes = [];
   for (const idx of eligible) {
@@ -247,17 +273,17 @@ export function optimize(baseTypes, baseResult, settings, city) {
   return { types: output, hubs, clusterCount: clusters.count, budgetCount, generations: 30 };
 }
 
-export function pedestrianValues(array, city) { return Array.from(array).filter((_, i) => !city.buildings[i]); }
+export function pedestrianValues(array, city) { return Array.from(array).filter((_, i) => !city.buildings[i] && (!city.insideBoundary || city.insideBoundary[i])); }
 export function exposure(result, threshold, city) {
   const values = result.hourly[15]; let numerator = 0, denominator = 0;
-  for (let i = 0; i < CELL_COUNT; i += 1) if (!city.buildings[i]) { const weight = city.population[i] * city.vulnerability[i]; denominator += weight; if (values[i] >= threshold) numerator += weight; }
+  for (let i = 0; i < CELL_COUNT; i += 1) if (!city.buildings[i] && (!city.insideBoundary || city.insideBoundary[i])) { const weight = city.population[i] * city.vulnerability[i]; denominator += weight; if (values[i] >= threshold) numerator += weight; }
   return 100 * numerator / Math.max(1, denominator);
 }
 
 export function tracerResidence(types, field, flux, city, referenceField = field) {
   let total = 0, count = 0;
   const starts = Array.from({ length: CELL_COUNT }, (_, i) => i)
-    .filter(i => !city.buildings[i])
+    .filter(i => !city.buildings[i] && (!city.insideBoundary || city.insideBoundary[i]))
     .sort((a, b) => referenceField[b] - referenceField[a])
     .slice(0, 28);
   const coolExit = percentile(pedestrianValues(referenceField, city), .45);

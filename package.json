@@ -6,7 +6,7 @@
   "description": "Interactive AI urban heat-island potential and tracer-flow simulator",
   "scripts": {
     "start": "npx serve .",
-    "test": "node tests/test_engine.mjs"
+    "test": "node tests/test_engine.mjs && node tests/test_guwol.mjs"
   },
   "license": "MIT",
   "engines": { "node": ">=18" }

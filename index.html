@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="AI 도시 열섬 설계와 열퍼텐셜 유동을 탐색하는 브라우저 시뮬레이터">
+  <meta name="description" content="Landsat·OpenStreetMap·과거기상으로 보정한 인천 구월동 AI 열섬 저감 시뮬레이터">
   <meta name="theme-color" content="#07131c">
   <title>Urban Heat Potential Lab</title>
   <link rel="stylesheet" href="src/styles.css">
@@ -13,8 +13,8 @@
   <header class="site-header">
     <div>
       <p class="eyebrow">URBAN HEAT POTENTIAL LAB</p>
-      <h1>열섬을 ‘지형’과 ‘흐름’으로 읽는 AI 도시설계</h1>
-      <p class="subtitle">동일한 기상·도시형상 아래에서 재료와 배치만 바꾸고, 열퍼텐셜 봉우리와 가상 열 추적자의 체류시간을 비교합니다.</p>
+      <h1>구월동 열섬을 ‘지형’과 ‘흐름’으로 읽는 AI 도시설계</h1>
+      <p class="subtitle">2024년 8월 29일 Landsat 지표면온도, 구월동 OpenStreetMap 건물·도로·녹지, 시간별 재분석 기상을 한 격자에 맞춰 재료와 배치만 바꿉니다.</p>
     </div>
     <div class="header-actions">
       <span id="status" class="status" aria-live="polite">모델 준비 중</span>
@@ -34,11 +34,11 @@
       <div class="variable-grid">
         <article>
           <strong>독립변인</strong>
-          <p>개입 면적, 목적함수, 지붕·지면 재료</p>
+          <p>개입 면적, 목적함수, 지붕·지면 재료와 배치</p>
         </article>
         <article>
           <strong>통제변인</strong>
-          <p>24×18 격자, 건물형상, 24시간 기상, 초기조건, 시드 8132026</p>
+          <p>구월동 경계·건물·도로, 관측일 기상, Landsat LST 앵커, 시드 8132026</p>
         </article>
         <article>
           <strong>종속변인</strong>
@@ -46,21 +46,23 @@
         </article>
       </div>
 
+      <div id="dataset-summary" class="dataset-summary" aria-label="구월동 데이터셋 요약"></div>
+
       <div class="controls">
         <label>
           <span>시각 <output id="hour-output">15시</output></span>
           <input id="hour" type="range" min="0" max="23" value="15">
         </label>
         <label>
-          <span>15시 기온 <output id="air-output">34°C</output></span>
+          <span>관측일 최고기온 <output id="air-output">31°C</output></span>
           <input id="air" type="range" min="30" max="40" value="34">
         </label>
         <label>
-          <span>최대 일사량 <output id="solar-output">850 W/m²</output></span>
+          <span>관측일 최대 일사 <output id="solar-output">850 W/m²</output></span>
           <input id="solar" type="range" min="550" max="1050" step="25" value="850">
         </label>
         <label>
-          <span>수분 가용도 <output id="moisture-output">60%</output></span>
+          <span>표층 토양수분 <output id="moisture-output">40%</output></span>
           <input id="moisture" type="range" min="0" max="100" step="5" value="60">
         </label>
         <label>
@@ -68,7 +70,7 @@
           <input id="budget" type="range" min="5" max="35" value="18">
         </label>
         <label>
-          <span>주풍향 <output id="wind-output">서풍</output></span>
+          <span>11시 풍향 <output id="wind-output">북서풍</output></span>
           <input id="wind" type="range" min="0" max="315" step="45" value="0">
         </label>
         <label>
@@ -90,7 +92,7 @@
           </select>
         </label>
         <label>
-          <span>위성·드론 배경 영상</span>
+          <span>사용자 배경 영상(선택)</span>
           <input id="basemap" type="file" accept="image/png,image/jpeg,image/webp">
         </label>
         <label>
@@ -137,11 +139,11 @@
       </div>
       <div class="map-grid">
         <figure>
-          <figcaption><strong>기준 도시</strong><span>아스팔트·콘크리트 중심</span></figcaption>
+          <figcaption><strong>현재 구월동</strong><span>OSM 형상 + Landsat LST 보정</span></figcaption>
           <div class="canvas-shell"><canvas id="baseline-map" aria-label="기준 도시 열퍼텐셜 지도"></canvas></div>
         </figure>
         <figure>
-          <figcaption><strong>AI 재배치 도시</strong><span>냉각거점·회랑·쿨루프 적용</span></figcaption>
+          <figcaption><strong>AI 재배치 구월동</strong><span>냉각거점·회랑·쿨루프 적용</span></figcaption>
           <div class="canvas-shell"><canvas id="optimized-map" aria-label="AI 재배치 도시 열퍼텐셜 지도"></canvas></div>
         </figure>
       </div>
@@ -185,7 +187,7 @@
 
     <section class="caveat" aria-labelledby="meaning-title">
       <div><p class="eyebrow">INTERPRETATION</p><h2 id="meaning-title">입자는 비유이고, 유속은 계산입니다</h2></div>
-      <p>점들은 실제 분자가 아니라 열에너지의 순전달을 보여주는 가상 추적자입니다. 지표온도(LST)는 보행 높이 대기온도와 다르므로 이 결과는 설계안 선별용 1차 모델입니다. 실제 적용 전 현장 센서, 위성 LST, 건물 높이, 바람 관측으로 보정하고 CFD·WRF·ENVI-met 등의 상세모델로 교차검증해야 합니다.</p>
+      <p>점들은 실제 분자가 아니라 열에너지의 순전달을 보여주는 가상 추적자입니다. Landsat LST는 보행 높이 대기온도와 다르며, 공개자료에 없는 건물 재질·세부 높이·보행량은 재질 사전값과 대리변수입니다. 따라서 결과는 개입 후보지 선별용이며 정책 판단 전 현장 기온·일사·재질·유동 관측과 CFD·WRF·ENVI-met 교차검증이 필요합니다.</p>
     </section>
   </main>
 

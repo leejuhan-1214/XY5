@@ -1,15 +1,20 @@
 import { MATERIALS, byId } from "./materials.js";
 import { GRID_W, GRID_H, CELL_COUNT, createCity, simulate, potentialField, fluxField, optimize, percentile, mean, pedestrianValues, exposure, tracerResidence, windVectorAt } from "./engine.js";
+import { GUWOL_DATA } from "../data/guwol-data.js";
 
 const $ = id => document.getElementById(id);
 const controls = { hour: $("hour"), air: $("air"), solar: $("solar"), moisture: $("moisture"), budget: $("budget"), wind: $("wind"), objective: $("objective"), layer: $("layer"), particles: $("particles"), basemap: $("basemap"), mapOpacity: $("map-opacity") };
 const canvases = { base: $("baseline-map"), opt: $("optimized-map"), chart: $("profile-chart") };
-const city = createCity();
+const city = createCity(GUWOL_DATA);
 const baselineTypes = city.types;
 let optimizedTypes = Uint8Array.from(baselineTypes), latest = null, plan = null, animation = 0, particles = [], runTimer = 0, basemapImage = null, basemapUrl = "";
 
 const WIND_NAMES = { 0: "서풍", 45: "북서풍", 90: "북풍", 135: "북동풍", 180: "동풍", 225: "남동풍", 270: "남풍", 315: "남서풍" };
-function settings() { return { peakAir: +controls.air.value, solar: +controls.solar.value, moisture: +controls.moisture.value / 100, budget: +controls.budget.value, windDeg: +controls.wind.value, objective: controls.objective.value }; }
+function settings() {
+  const observedPeak = Math.max(...GUWOL_DATA.weather.temperature_2m), observedSolar = Math.max(...GUWOL_DATA.weather.shortwave_radiation);
+  const weather = { ...GUWOL_DATA.weather, temperature_2m: GUWOL_DATA.weather.temperature_2m.map(value => value + (+controls.air.value - observedPeak)), shortwave_radiation: GUWOL_DATA.weather.shortwave_radiation.map(value => value * +controls.solar.value / observedSolar) };
+  return { peakAir: +controls.air.value, solar: +controls.solar.value, moisture: +controls.moisture.value / 100, budget: +controls.budget.value, windDeg: +controls.wind.value, objective: controls.objective.value, weather, observedHour: 11, calibrateLST: true };
+}
 function updateOutputs() {
   $("hour-output").textContent = `${String(controls.hour.value).padStart(2, "0")}시`;
   $("air-output").textContent = `${controls.air.value}°C`; $("solar-output").textContent = `${controls.solar.value} W/m²`;
@@ -95,6 +100,7 @@ function drawMap(canvas, side, types, result, field, flux) {
   ctx.save(); ctx.globalAlpha = basemapImage ? +controls.mapOpacity.value / 100 : 1;
   for (let i = 0; i < CELL_COUNT; i += 1) {
     const x = i % GRID_W, y = Math.floor(i / GRID_W), material = byId(types[i]);
+    if (city.insideBoundary && !city.insideBoundary[i]) { ctx.fillStyle = "rgba(2,8,12,.73)"; ctx.fillRect(x * cw, y * ch, Math.ceil(cw) + .3, Math.ceil(ch) + .3); continue; }
     ctx.fillStyle = controls.layer.value === "materials" ? material.color : scalarColor(values[i], min, max);
     ctx.fillRect(x * cw, y * ch, Math.ceil(cw) + .3, Math.ceil(ch) + .3);
     if (city.buildings[i]) { ctx.fillStyle = "rgba(0,0,0,.18)"; ctx.fillRect(x * cw + 1, y * ch + 1, cw - 2, ch - 2); ctx.strokeStyle = "rgba(255,255,255,.2)"; ctx.strokeRect(x * cw + .5, y * ch + .5, cw - 1, ch - 1); }
@@ -150,11 +156,11 @@ function animate() { if (latest && controls.particles.checked) { drawMap(canvase
 function run() {
   clearTimeout(runTimer); updateOutputs(); $("status").textContent = "텐서 CA 계산 중"; $("run-button").disabled = true;
   requestAnimationFrame(() => {
-    const modelSettings = settings(), base = simulate(baselineTypes, modelSettings, city); plan = optimize(baselineTypes, base, modelSettings, city); optimizedTypes = plan.types;
+    const modelSettings = settings(), base = simulate(baselineTypes, modelSettings, city); modelSettings.calibrationBias = base.calibrationBias; plan = optimize(baselineTypes, base, modelSettings, city); optimizedTypes = plan.types;
     const opt = simulate(optimizedTypes, modelSettings, city); latest = { settings: modelSettings, base, opt };
     resetParticles(); render(); metrics();
     $("pipe-dbscan").textContent = `${plan.clusterCount}개 고온 군집 탐지`; $("pipe-mclp").textContent = `${plan.hubs.length}개 냉각 거점 선정`; $("pipe-ga").textContent = `${plan.generations}세대 · ${plan.budgetCount}셀 재배치`; $("pipe-ca").textContent = `[24, 7, ${GRID_H}, ${GRID_W}] 정보텐서 · 144 스텝`;
-    $("status").textContent = "계산 완료 · 시드 고정"; $("run-button").disabled = false;
+    $("status").textContent = "구월동 실측 앵커 · 계산 완료"; $("run-button").disabled = false;
   });
 }
 
@@ -170,6 +176,7 @@ function hover(canvas, side) {
 }
 
 $("material-table").innerHTML = MATERIALS.map(m => `<tr><td>${m.name}</td><td>${m.albedo.toFixed(2)}</td><td>${m.emissivity.toFixed(2)}</td><td>${m.storage}</td><td>${m.permeability}</td><td>${m.source}</td></tr>`).join("");
+$('dataset-summary').innerHTML = `<strong>${GUWOL_DATA.acquisition.date} ${GUWOL_DATA.acquisition.localTime}</strong><span>Landsat LST ${GUWOL_DATA.acquisition.lstMinC}–${GUWOL_DATA.acquisition.lstMaxC}°C · 평균 ${GUWOL_DATA.acquisition.lstMeanC}°C · AOI 구름 ${GUWOL_DATA.acquisition.aoiCloudQaPercent}%</span><span>OSM 건물 ${GUWOL_DATA.osm.featureCounts.building.toLocaleString('ko-KR')}개 · 도로 ${GUWOL_DATA.osm.featureCounts.road.toLocaleString('ko-KR')}개 · 격자 약 108 × 167 m</span>`;
 hover(canvases.base, "base"); hover(canvases.opt, "opt");
 [controls.air, controls.solar, controls.moisture, controls.budget, controls.wind, controls.objective].forEach(control => control.addEventListener("input", scheduleRun));
 [controls.hour, controls.layer].forEach(control => control.addEventListener("input", () => { updateOutputs(); render(); }));
@@ -185,5 +192,12 @@ controls.basemap.addEventListener("change", () => {
   image.src = basemapUrl;
 });
 new ResizeObserver(render).observe(document.querySelector("main"));
+controls.air.value = Math.round(Math.max(...GUWOL_DATA.weather.temperature_2m));
+controls.solar.value = Math.round(Math.max(...GUWOL_DATA.weather.shortwave_radiation) / 25) * 25;
+controls.moisture.value = Math.round(GUWOL_DATA.weather.soil_moisture_0_to_7cm[11] * 100 / 5) * 5;
+controls.wind.value = Math.round(GUWOL_DATA.weather.wind_direction_10m[11] / 45) * 45 % 360;
+const defaultMap = new Image();
+defaultMap.onload = () => { basemapImage = defaultMap; render(); };
+defaultMap.src = "data/guwol-osm-basemap.webp";
 updateOutputs(); run(); animation = requestAnimationFrame(animate);
 window.addEventListener("beforeunload", () => { cancelAnimationFrame(animation); if (basemapUrl) URL.revokeObjectURL(basemapUrl); });

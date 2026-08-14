@@ -1,0 +1,1 @@
+{"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {"name": "구월동", "osm_relation": 8857846}, "geometry": {"type": "Polygon", "coordinates": [[[126.6925639, 37.4340681], [126.7218288, 37.4340681], [126.7218288, 37.4610653], [126.6925639, 37.4610653], [126.6925639, 37.4340681]]]}}]}
