@@ -1,13 +1,16 @@
 import { MATERIALS, byId } from "./materials.js";
 import { GRID_W, GRID_H, CELL_COUNT, createCity, simulate, potentialField, fluxField, optimize, percentile, mean, pedestrianValues, exposure, tracerResidence, windVectorAt } from "./engine.js";
+import { CityScene3D } from "./scene3d.js";
 import { GUWOL_DATA } from "../data/guwol-data.js";
+import { GUWOL_HISTORY } from "../data/guwol-history.js";
 
 const $ = id => document.getElementById(id);
 const controls = { hour: $("hour"), air: $("air"), solar: $("solar"), moisture: $("moisture"), budget: $("budget"), wind: $("wind"), objective: $("objective"), layer: $("layer"), particles: $("particles"), basemap: $("basemap"), mapOpacity: $("map-opacity") };
 const canvases = { base: $("baseline-map"), opt: $("optimized-map"), chart: $("profile-chart") };
-const city = createCity(GUWOL_DATA);
+const sceneControls = { metric: $("metric-3d"), scenario: $("scenario-3d"), date: $("scene-date-3d"), exaggeration: $("exaggeration-3d") };
+const city = createCity(GUWOL_DATA, GUWOL_HISTORY);
 const baselineTypes = city.types;
-let optimizedTypes = Uint8Array.from(baselineTypes), latest = null, plan = null, animation = 0, particles = [], runTimer = 0, basemapImage = null, basemapUrl = "";
+let optimizedTypes = Uint8Array.from(baselineTypes), latest = null, plan = null, animation = 0, particles = [], runTimer = 0, basemapImage = null, basemapUrl = "", scene3d = null;
 
 const WIND_NAMES = { 0: "서풍", 45: "북서풍", 90: "북풍", 135: "북동풍", 180: "동풍", 225: "남동풍", 270: "남풍", 315: "남서풍" };
 function settings() {
@@ -21,6 +24,7 @@ function updateOutputs() {
   $("moisture-output").textContent = `${controls.moisture.value}%`; $("budget-output").textContent = `${controls.budget.value}%`;
   $("wind-output").textContent = WIND_NAMES[controls.wind.value];
   $("opacity-output").textContent = `${controls.mapOpacity.value}%`;
+  $("exaggeration-output").textContent = `${(+sceneControls.exaggeration.value).toFixed(1)}×`;
 }
 
 function setupCanvas(canvas) {
@@ -148,7 +152,7 @@ function render() {
   const hour = +controls.hour.value;
   latest.baseField = potentialField(baselineTypes, latest.base, hour, latest.settings, city); latest.optField = potentialField(optimizedTypes, latest.opt, hour, latest.settings, city);
   latest.baseFlux = fluxField(latest.baseField, latest.settings, city); latest.optFlux = fluxField(latest.optField, latest.settings, city);
-  drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); drawProfile(); updateLegend();
+  drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); drawProfile(); updateLegend(); scene3d?.render();
 }
 
 function animate() { if (latest && controls.particles.checked) { drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); } animation = requestAnimationFrame(animate); }
@@ -160,7 +164,7 @@ function run() {
     const opt = simulate(optimizedTypes, modelSettings, city); latest = { settings: modelSettings, base, opt };
     resetParticles(); render(); metrics();
     $("pipe-dbscan").textContent = `${plan.clusterCount}개 고온 군집 탐지`; $("pipe-mclp").textContent = `${plan.hubs.length}개 냉각 거점 선정`; $("pipe-ga").textContent = `${plan.generations}세대 · ${plan.budgetCount}셀 재배치`; $("pipe-ca").textContent = `[24, 7, ${GRID_H}, ${GRID_W}] 정보텐서 · 144 스텝`;
-    $("status").textContent = "구월동 실측 앵커 · 계산 완료"; $("run-button").disabled = false;
+    $("status").textContent = `Landsat ${GUWOL_HISTORY.sceneCount}장 · 3D 계산 완료`; $("run-button").disabled = false;
   });
 }
 
@@ -176,7 +180,29 @@ function hover(canvas, side) {
 }
 
 $("material-table").innerHTML = MATERIALS.map(m => `<tr><td>${m.name}</td><td>${m.albedo.toFixed(2)}</td><td>${m.emissivity.toFixed(2)}</td><td>${m.storage}</td><td>${m.permeability}</td><td>${m.source}</td></tr>`).join("");
-$('dataset-summary').innerHTML = `<strong>${GUWOL_DATA.acquisition.date} ${GUWOL_DATA.acquisition.localTime}</strong><span>Landsat LST ${GUWOL_DATA.acquisition.lstMinC}–${GUWOL_DATA.acquisition.lstMaxC}°C · 평균 ${GUWOL_DATA.acquisition.lstMeanC}°C · AOI 구름 ${GUWOL_DATA.acquisition.aoiCloudQaPercent}%</span><span>OSM 건물 ${GUWOL_DATA.osm.featureCounts.building.toLocaleString('ko-KR')}개 · 도로 ${GUWOL_DATA.osm.featureCounts.road.toLocaleString('ko-KR')}개 · 격자 약 108 × 167 m</span>`;
+$('dataset-summary').innerHTML = `<strong>${GUWOL_HISTORY.period} · ${GUWOL_HISTORY.sceneCount}장</strong><span>다년 LST 평균 ${GUWOL_HISTORY.summary.meanLstC.toFixed(1)}°C · 평균 P90 ${GUWOL_HISTORY.summary.meanP90LstC.toFixed(1)}°C · QA_PIXEL 구름 제거</span><span>OSM 건물 ${GUWOL_DATA.osm.featureCounts.building.toLocaleString('ko-KR')}개 · 도로 ${GUWOL_DATA.osm.featureCounts.road.toLocaleString('ko-KR')}개 · 격자 약 108 × 167 m</span>`;
+$("history-summary").innerHTML = [
+  ["위성 장면", `${GUWOL_HISTORY.sceneCount}장`, "Landsat 8·9"],
+  ["다년 평균 LST", `${GUWOL_HISTORY.summary.meanLstC.toFixed(1)}°C`, "구월동 경계 내부"],
+  ["평균 고온 P90", `${GUWOL_HISTORY.summary.meanP90LstC.toFixed(1)}°C`, "셀별 상위 10%"],
+  ["반복 고온", `${GUWOL_HISTORY.summary.meanHotFrequencyPercent.toFixed(1)}%`, "장면별 상위 20%"],
+].map(([label, value, note]) => `<div class="history-stat"><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`).join("");
+const sceneTemperatures = GUWOL_HISTORY.scenes.map(scene => scene.meanLstC), sceneMin = Math.min(...sceneTemperatures), sceneMax = Math.max(...sceneTemperatures);
+$("scene-strip").innerHTML = GUWOL_HISTORY.scenes.map(scene => {
+  const height = 28 + 68 * (scene.meanLstC - sceneMin) / Math.max(.1, sceneMax - sceneMin);
+  return `<button class="scene-bar" style="--height:${height.toFixed(0)}px" data-year="${scene.date.slice(2, 4)}" data-scene-index="${GUWOL_HISTORY.scenes.indexOf(scene)}" title="${scene.date} · 평균 ${scene.meanLstC.toFixed(1)}°C · 유효 ${scene.aoiValidPercent.toFixed(0)}%" aria-label="${scene.date}, 평균 지표면온도 ${scene.meanLstC.toFixed(1)}도"></button>`;
+}).join("");
+sceneControls.date.innerHTML = GUWOL_HISTORY.scenes.map((scene, index) => `<option value="${index}" ${index === GUWOL_HISTORY.sceneCount - 1 ? "selected" : ""}>${scene.date} · ${scene.meanLstC.toFixed(1)}°C</option>`).join("");
+scene3d = new CityScene3D($("city-3d"), { city, history: GUWOL_HISTORY, getState: () => ({ latest, optimizedTypes }), metricSelect: sceneControls.metric, scenarioSelect: sceneControls.scenario, sceneSelect: sceneControls.date, exaggerationInput: sceneControls.exaggeration, detailElement: $("detail-3d") });
+document.querySelectorAll(".scene-bar").forEach(button => button.addEventListener("click", () => {
+  sceneControls.date.value = button.dataset.sceneIndex;
+  sceneControls.metric.value = "scene";
+  scene3d.render();
+}));
+$("rotate-left").addEventListener("click", () => scene3d.rotate(-Math.PI / 8));
+$("rotate-right").addEventListener("click", () => scene3d.rotate(Math.PI / 8));
+$("reset-view").addEventListener("click", () => scene3d.reset());
+sceneControls.exaggeration.addEventListener("input", updateOutputs);
 hover(canvases.base, "base"); hover(canvases.opt, "opt");
 [controls.air, controls.solar, controls.moisture, controls.budget, controls.wind, controls.objective].forEach(control => control.addEventListener("input", scheduleRun));
 [controls.hour, controls.layer].forEach(control => control.addEventListener("input", () => { updateOutputs(); render(); }));

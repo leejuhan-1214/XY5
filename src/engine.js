@@ -17,7 +17,7 @@ export const mean = values => values.reduce((sum, value) => sum + value, 0) / Ma
 const xy = i => [i % GRID_W, Math.floor(i / GRID_W)];
 const distance = (a, b) => { const [ax, ay] = xy(a), [bx, by] = xy(b); return Math.hypot(ax - bx, ay - by); };
 
-export function createCity(dataset = null) {
+export function createCity(dataset = null, history = null) {
   if (dataset?.surface?.material?.length === CELL_COUNT) {
     return {
       types: Uint8Array.from(dataset.surface.material),
@@ -29,7 +29,10 @@ export function createCity(dataset = null) {
       observedLST: Float32Array.from(dataset.remoteSensing.lstC),
       ndvi: Float32Array.from(dataset.remoteSensing.ndvi),
       ndbi: Float32Array.from(dataset.remoteSensing.ndbi),
+      historyHotFrequency: history?.metrics?.hotFrequencyPercent?.length === CELL_COUNT ? Float32Array.from(history.metrics.hotFrequencyPercent) : null,
+      historyMeanAnomaly: history?.metrics?.meanAnomalyC?.length === CELL_COUNT ? Float32Array.from(history.metrics.meanAnomalyC) : null,
       dataset,
+      history,
     };
   }
   const types = new Uint8Array(CELL_COUNT);
@@ -212,7 +215,10 @@ export function optimize(baseTypes, baseResult, settings, city) {
   const clusters = dbscan(hot, 1.55, 3);
   const candidates = [];
   for (let i = 0; i < CELL_COUNT; i += 1) if (active(i) && !city.buildings[i] && baseTypes[i] !== MATERIAL.grass.id && baseTypes[i] !== MATERIAL.tree.id) candidates.push(i);
-  const weights = new Map(hot.map(i => [i, city.population[i] * city.vulnerability[i] * Math.max(1, peakPotential[i] - threshold + 1)]));
+  const historyPriority = i => 1
+    + (city.historyHotFrequency?.[i] || 0) / 100 * .9
+    + Math.max(0, city.historyMeanAnomaly?.[i] || 0) * .18;
+  const weights = new Map(hot.map(i => [i, city.population[i] * city.vulnerability[i] * Math.max(1, peakPotential[i] - threshold + 1) * historyPriority(i)]));
   const hubs = greedyMCLP(candidates, hot, weights, Math.max(3, Math.min(8, Math.round(settings.budget / 4))), 3.2);
   const eligible = Array.from({ length: CELL_COUNT }, (_, i) => i).filter(i => active(i) && baseTypes[i] !== MATERIAL.grass.id && baseTypes[i] !== MATERIAL.tree.id);
   const budgetCount = Math.max(1, Math.round(eligible.length * settings.budget / 100));
@@ -235,6 +241,7 @@ export function optimize(baseTypes, baseResult, settings, city) {
       if (settings.objective === "residence") score = (evapGain * 1.2 + storageGain + solarGain * .65) * (1 + nearby * .014) + hubBonus * 1.5;
       if (settings.objective === "night") score = (storageGain * 2.3 + evapGain * .8 + solarGain * .55) * (1 + nearby * .012) + hubBonus * .5;
       if (next.tree) score += 3.2 + equity * .018;
+      score *= historyPriority(idx);
       genes.push({ idx, materialId, score });
     }
   }
