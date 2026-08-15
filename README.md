@@ -1,14 +1,16 @@
 # Urban Heat Potential Lab
 
-인천광역시 남동구 **구월동**의 각 셀을 정보행렬로 표현하고, 열섬을 퍼텐셜 지형과 가상 열 추적자 흐름으로 설명하는 정적 웹 시뮬레이터입니다. DBSCAN, MCLP, 유전 알고리즘, 셀룰러 오토마타(CA), PyTorch 대응 텐서 구조를 하나의 재현 가능한 파이프라인으로 묶었습니다.
+인천광역시 남동구 **구월동**의 각 셀을 정보행렬로 표현하고, 열섬을 다년 위성 합성·3D 열지형·가상 열 추적자 흐름으로 설명하는 정적 웹 시뮬레이터입니다. DBSCAN, MCLP, 유전 알고리즘, 셀룰러 오토마타(CA), PyTorch 대응 텐서 구조를 하나의 재현 가능한 파이프라인으로 묶었습니다.
 
 > 이 프로젝트는 연구·교육용 1차 스크리닝 모델입니다. 표시되는 입자는 실제 분자가 아니라 열에너지의 순전달을 시각화한 가상 추적자이며, 유효 열퍼텐셜 Φ는 여러 무차원화 전 항의 가중합인 비교용 지수입니다.
 
 ## 핵심 기능
 
 - 동일한 도시형상·기상·초기조건에서 재료/배치만 변경하는 변인 통제
-- 구월동 법정동 경계, OSM 건물·도로·녹지, Landsat 8 LST·NDVI·NDBI, 관측일 시간별 기상 내장
+- 구월동 법정동 경계, OSM 건물·도로·녹지, Landsat 8·9 LST·NDVI·NDBI, 관측일 시간별 기상 내장
+- 2018–2025년 여름 Tier 1 장면을 QA_PIXEL로 거른 다년 평균·P90·반복 고온빈도·상대 열추세
 - 2024-08-29 11:10 KST Landsat LST(구월동 격자 평균 42.5°C)를 기준안 보정 앵커로 사용
+- 건물 높이와 합성지표 또는 13개 개별 촬영일 LST를 함께 탐색하는 드래그 회전·휠 확대 3D 도시 모델
 - 24×18 도시 격자와 10분 간격 24시간 에너지수지 계산
 - 열퍼텐셜 등고선, 열유속 벡터, 가상 열 추적자 애니메이션
 - 합법적으로 확보한 PNG/JPEG/WebP 위성·드론 영상을 브라우저에서 배경으로 불러오기
@@ -41,11 +43,22 @@ npm run start
 
 - 공간 범위: OSM 법정동 구월동 relation `8857846`, WGS84 `126.6925639–126.7218288°E`, `37.4340681–37.4610653°N`
 - 토지·형상: OpenStreetMap 건물 1,550개, 도로 1,152개, 녹지 36개, 주차장 16개를 24×18 격자로 집계
-- 원격탐사: Landsat 8 Collection 2 Level-2 `LC08_L2SP_116034_20240829_02_T1`; LST, NDVI, NDBI, QA_PIXEL
+- 원격탐사 앵커: Landsat 8 Collection 2 Level-2 `LC08_L2SP_116034_20240829_02_T1`; LST, NDVI, NDBI, QA_PIXEL
+- 다년 합성: `data/guwol-history.json`에 기록된 2018–2025년 여름 Landsat 8·9 Tier 1 장면. 구름·권운·그림자 제거 후 장면별 상위 20% 빈도를 반복 고온지표로 사용
 - 기상: Open-Meteo Historical Weather API의 2024-08-29 시간별 기온·습도·풍향·풍속·일사·토양수분
-- 내장 파일: `data/guwol-data.json`, `data/guwol-boundary.geojson`, `data/guwol-osm-basemap.webp`
+- 내장 파일: `data/guwol-data.json`, `data/guwol-history.json`, `data/guwol-boundary.geojson`, `data/guwol-osm-basemap.webp`
 
 Landsat LST는 보행 높이 기온이 아닌 **지표면온도**입니다. 공개 공간자료에 없는 실제 지붕 재질, 일부 높이, 보행량·취약인구는 각각 재질 사전값과 대리변수를 사용하며 화면과 데이터 파일에 구분해 두었습니다.
+
+### 다년 합성 재생성
+
+Python의 NumPy·Pillow가 있는 환경에서 Microsoft Planetary Computer의 공개 STAC/Data API로 소형 분석 격자를 다시 만들 수 있습니다.
+
+```bash
+python scripts/build_multitemporal.py
+```
+
+스크립트는 원본 대용량 래스터를 저장소에 넣지 않고 장면 ID, 품질정보, 24×18 집계지표만 기록합니다. 상대 열추세는 기상 정규화된 장기 기후추세가 아니라 각 장면의 구월동 평균을 뺀 공간 편차의 선형 변화입니다.
 
 ## 테스트
 
