@@ -1,4 +1,4 @@
-import { MATERIALS, byId } from "./materials.js";
+import { MATERIALS, byId, materialLabel, materialOnlyTypes } from "./materials.js";
 import { GRID_W, GRID_H, CELL_COUNT, createCity, simulate, potentialField, fluxField, optimize, percentile, mean, pedestrianValues, exposure, tracerResidence, windVectorAt } from "./engine.js";
 import { CityScene3D } from "./scene3d.js";
 import { GUWOL_DATA } from "../data/guwol-data.js";
@@ -6,10 +6,11 @@ import { GUWOL_HISTORY } from "../data/guwol-history.js";
 
 const $ = id => document.getElementById(id);
 const controls = { hour: $("hour"), air: $("air"), solar: $("solar"), moisture: $("moisture"), budget: $("budget"), wind: $("wind"), objective: $("objective"), layer: $("layer"), particles: $("particles"), basemap: $("basemap"), mapOpacity: $("map-opacity") };
-const canvases = { base: $("baseline-map"), opt: $("optimized-map"), chart: $("profile-chart") };
+const canvases = { base: $("baseline-map"), material: $("material-map"), opt: $("optimized-map"), chart: $("profile-chart") };
 const sceneControls = { metric: $("metric-3d"), scenario: $("scenario-3d"), date: $("scene-date-3d"), exaggeration: $("exaggeration-3d") };
 const city = createCity(GUWOL_DATA, GUWOL_HISTORY);
 const baselineTypes = city.types;
+let materialTypes = Uint8Array.from(baselineTypes);
 let optimizedTypes = Uint8Array.from(baselineTypes), latest = null, plan = null, animation = 0, particles = [], runTimer = 0, basemapImage = null, basemapUrl = "", scene3d = null;
 
 const WIND_NAMES = { 0: "서풍", 45: "북서풍", 90: "북풍", 135: "북동풍", 180: "동풍", 225: "남동풍", 270: "남풍", 315: "남서풍" };
@@ -36,6 +37,62 @@ function setupCanvas(canvas) {
 const hexToRgb = hex => [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16)];
 const mix = (a, b, t) => { const x = hexToRgb(a), y = hexToRgb(b), q = Math.max(0, Math.min(1, t)); return `rgb(${Math.round(x[0] + (y[0] - x[0]) * q)},${Math.round(x[1] + (y[1] - x[1]) * q)},${Math.round(x[2] + (y[2] - x[2]) * q)})`; };
 const scalarColor = (value, min, max) => { const q = (value - min) / Math.max(.1, max - min); return q < .33 ? mix("#386fae", "#56d8dd", q * 3) : q < .66 ? mix("#56d8dd", "#ffc75b", (q - .33) * 3) : mix("#ffc75b", "#ff645f", (q - .66) * 2.94); };
+
+function createVoronoi() {
+  const candidates = [];
+  for (let y = 0; y < GRID_H; y += 1) for (let x = 0; x < GRID_W; x += 1) {
+    const i = y * GRID_W + x;
+    if (!city.insideBoundary || city.insideBoundary[i]) candidates.push({ x: x + .5, y: y + .5 });
+  }
+  const sites = [candidates[Math.floor(candidates.length / 2)]];
+  while (sites.length < Math.min(72, candidates.length)) {
+    let best = candidates[0], bestDistance = -1;
+    for (const candidate of candidates) {
+      let nearest = Infinity;
+      for (const site of sites) nearest = Math.min(nearest, (candidate.x - site.x) ** 2 + (candidate.y - site.y) ** 2);
+      if (nearest > bestDistance) { best = candidate; bestDistance = nearest; }
+    }
+    sites.push(best);
+  }
+  const cols = GRID_W * 4, rows = GRID_H * 4, zones = new Int16Array(cols * rows).fill(-1);
+  for (let row = 0; row < rows; row += 1) for (let col = 0; col < cols; col += 1) {
+    const x = (col + .5) / 4, y = (row + .5) / 4, cell = Math.floor(y) * GRID_W + Math.floor(x);
+    if (city.insideBoundary && !city.insideBoundary[cell]) continue;
+    let nearest = 0, distance = Infinity;
+    for (let s = 0; s < sites.length; s += 1) {
+      const d = (x - sites[s].x) ** 2 + (y - sites[s].y) ** 2;
+      if (d < distance) { distance = d; nearest = s; }
+    }
+    zones[row * cols + col] = nearest;
+  }
+  return { sites, cols, rows, zones };
+}
+const voronoi = createVoronoi();
+
+function voronoiZoneAt(x, y) {
+  let nearest = 0, distance = Infinity;
+  for (let s = 0; s < voronoi.sites.length; s += 1) {
+    const site = voronoi.sites[s], d = (x - site.x) ** 2 + (y - site.y) ** 2;
+    if (d < distance) { distance = d; nearest = s; }
+  }
+  return nearest + 1;
+}
+
+function drawVoronoi(ctx, width, height) {
+  const sx = width / voronoi.cols, sy = height / voronoi.rows;
+  ctx.save(); ctx.beginPath(); ctx.strokeStyle = "rgba(244,252,255,.34)"; ctx.lineWidth = .85;
+  for (let row = 0; row < voronoi.rows; row += 1) for (let col = 0; col < voronoi.cols; col += 1) {
+    const zone = voronoi.zones[row * voronoi.cols + col]; if (zone < 0) continue;
+    if (col > 0 && voronoi.zones[row * voronoi.cols + col - 1] !== zone) { ctx.moveTo(col * sx, row * sy); ctx.lineTo(col * sx, (row + 1) * sy); }
+    if (row > 0 && voronoi.zones[(row - 1) * voronoi.cols + col] !== zone) { ctx.moveTo(col * sx, row * sy); ctx.lineTo((col + 1) * sx, row * sy); }
+  }
+  ctx.stroke(); ctx.fillStyle = "rgba(244,252,255,.62)";
+  voronoi.sites.forEach((site, index) => { if (index % 3) return; ctx.beginPath(); ctx.arc(site.x / GRID_W * width, site.y / GRID_H * height, 1.25, 0, Math.PI * 2); ctx.fill(); });
+  ctx.restore();
+}
+
+const scenarioTypes = side => side === "base" ? baselineTypes : side === "material" ? materialTypes : optimizedTypes;
+const scenarioName = side => side === "base" ? "현재" : side === "material" ? "재료만 변경" : "AI 재배치";
 
 function drawRoadTexture(ctx, width, height, cw, ch) {
   ctx.save(); ctx.strokeStyle = "rgba(255,255,255,.045)"; ctx.lineWidth = .7;
@@ -71,7 +128,8 @@ function drawFlux(ctx, flux, cw, ch) {
 
 function resetParticles() {
   const random = (() => { let s = 8132026; return () => ((s = Math.imul(1664525, s) + 1013904223 >>> 0) / 4294967296); })();
-  particles = Array.from({ length: 95 }, () => ({ x: random() * GRID_W, y: random() * GRID_H, life: random() * 180, side: random() < .5 ? "base" : "opt" }));
+  const sides = ["base", "material", "opt"];
+  particles = Array.from({ length: 126 }, () => ({ x: random() * GRID_W, y: random() * GRID_H, life: random() * 180, side: sides[Math.floor(random() * sides.length)] }));
 }
 
 function drawParticles(ctx, side, flux, cw, ch) {
@@ -81,20 +139,29 @@ function drawParticles(ctx, side, flux, cw, ch) {
     let x = Math.max(0, Math.min(GRID_W - .001, particle.x)), y = Math.max(0, Math.min(GRID_H - .001, particle.y)), i = Math.floor(y) * GRID_W + Math.floor(x);
     const u = flux[i * 2], v = flux[i * 2 + 1], mag = Math.hypot(u, v) || 1;
     particle.x += .025 * u / mag; particle.y += .025 * v / mag; particle.life += 1;
-    if (particle.x < 0 || particle.x >= GRID_W || particle.y < 0 || particle.y >= GRID_H || particle.life > 220 || byId((side === "base" ? baselineTypes : optimizedTypes)[i]).green) { particle.x = Math.random() * GRID_W; particle.y = Math.random() * GRID_H; particle.life = 0; }
+    if (particle.x < 0 || particle.x >= GRID_W || particle.y < 0 || particle.y >= GRID_H || particle.life > 220 || byId(scenarioTypes(side)[i]).green) { particle.x = Math.random() * GRID_W; particle.y = Math.random() * GRID_H; particle.life = 0; }
     ctx.beginPath(); ctx.arc(x * cw, y * ch, 1.55, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
 }
 
+function informationField(types, result, hour) {
+  const values = new Float32Array(CELL_COUNT), modelSettings = latest.settings;
+  for (let i = 0; i < CELL_COUNT; i += 1) {
+    const material = byId(types[i]);
+    values[i] = result.hourly[hour][i] + city.heights[i] / 8 + (1 - material.albedo) * 10 - material.evap * modelSettings.moisture / 35;
+  }
+  return values;
+}
+
 function drawMap(canvas, side, types, result, field, flux) {
   const { context: ctx, width, height } = setupCanvas(canvas), cw = width / GRID_W, ch = height / GRID_H, hour = +controls.hour.value;
-  const tempAll = pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.opt.hourly[hour], city));
-  const phiAll = pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.optField, city));
-  const info = new Float32Array(CELL_COUNT);
-  for (let i = 0; i < CELL_COUNT; i += 1) { const m = byId(types[i]); info[i] = result.hourly[hour][i] + city.heights[i] / 8 + (1 - m.albedo) * 10 - m.evap * settings().moisture / 35; }
+  const tempAll = pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.material.hourly[hour], city), pedestrianValues(latest.opt.hourly[hour], city));
+  const phiAll = pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.materialField, city), pedestrianValues(latest.optField, city));
+  const info = informationField(types, result, hour);
   const values = controls.layer.value === "potential" ? field : controls.layer.value === "temperature" ? result.hourly[hour] : info;
-  const all = controls.layer.value === "potential" ? phiAll : controls.layer.value === "temperature" ? tempAll : pedestrianValues(values, city);
+  const infoAll = pedestrianValues(informationField(baselineTypes, latest.base, hour), city).concat(pedestrianValues(informationField(materialTypes, latest.material, hour), city), pedestrianValues(informationField(optimizedTypes, latest.opt, hour), city));
+  const all = controls.layer.value === "potential" ? phiAll : controls.layer.value === "temperature" ? tempAll : infoAll;
   const min = percentile(all, .03), max = percentile(all, .97);
   ctx.clearRect(0, 0, width, height);
   if (basemapImage) {
@@ -111,6 +178,7 @@ function drawMap(canvas, side, types, result, field, flux) {
   }
   ctx.restore();
   drawRoadTexture(ctx, width, height, cw, ch);
+  drawVoronoi(ctx, width, height);
   if (controls.layer.value === "potential") drawContours(ctx, field, min, max, cw, ch);
   drawFlux(ctx, flux, cw, ch);
   if (side === "opt" && plan) { ctx.save(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.5; for (const hub of plan.hubs) { const x = hub % GRID_W, y = Math.floor(hub / GRID_W); ctx.beginPath(); ctx.arc((x + .5) * cw, (y + .5) * ch, Math.max(3, Math.min(cw, ch) * .25), 0, Math.PI * 2); ctx.stroke(); } ctx.restore(); }
@@ -119,20 +187,29 @@ function drawMap(canvas, side, types, result, field, flux) {
 
 function drawProfile() {
   const { context: ctx, width, height } = setupCanvas(canvases.chart), margin = { l: 46, r: 14, t: 12, b: 30 };
-  const base = [], opt = [];
-  for (let hour = 0; hour < 24; hour += 1) { base.push(percentile(pedestrianValues(potentialField(baselineTypes, latest.base, hour, latest.settings, city), city), .95)); opt.push(percentile(pedestrianValues(potentialField(optimizedTypes, latest.opt, hour, latest.settings, city), city), .95)); }
-  const min = Math.min(...base, ...opt) - 2, max = Math.max(...base, ...opt) + 2, plotW = width - margin.l - margin.r, plotH = height - margin.t - margin.b;
+  const base = [], material = [], opt = [];
+  for (let hour = 0; hour < 24; hour += 1) { base.push(percentile(pedestrianValues(potentialField(baselineTypes, latest.base, hour, latest.settings, city), city), .95)); material.push(percentile(pedestrianValues(potentialField(materialTypes, latest.material, hour, latest.settings, city), city), .95)); opt.push(percentile(pedestrianValues(potentialField(optimizedTypes, latest.opt, hour, latest.settings, city), city), .95)); }
+  const min = Math.min(...base, ...material, ...opt) - 2, max = Math.max(...base, ...material, ...opt) + 2, plotW = width - margin.l - margin.r, plotH = height - margin.t - margin.b;
   ctx.clearRect(0, 0, width, height); ctx.strokeStyle = "#274454"; ctx.fillStyle = "#a9c1ca"; ctx.font = "12px system-ui";
   for (let k = 0; k <= 4; k += 1) { const y = margin.t + plotH * k / 4, value = max - (max - min) * k / 4; ctx.beginPath(); ctx.moveTo(margin.l, y); ctx.lineTo(width - margin.r, y); ctx.stroke(); ctx.fillText(value.toFixed(0), 6, y + 4); }
   for (const hour of [0, 6, 12, 18, 23]) { const x = margin.l + plotW * hour / 23; ctx.fillText(`${hour}h`, x - 8, height - 8); }
   const line = (series, color) => { ctx.strokeStyle = color; ctx.lineWidth = 2.3; ctx.beginPath(); series.forEach((value, i) => { const x = margin.l + plotW * i / 23, y = margin.t + plotH * (max - value) / (max - min); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }); ctx.stroke(); };
-  line(base, "#ff766f"); line(opt, "#56d8dd");
+  line(base, "#ff766f"); line(material, "#ffc75b"); line(opt, "#56d8dd");
 }
 
 function updateLegend() {
   const hour = +controls.hour.value, layer = controls.layer.value;
-  if (layer === "materials") $("legend").innerHTML = `<span>재료색</span><span>○ MCLP 거점</span><span>→ 순 열유속</span>`;
-  else { const values = layer === "temperature" ? pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.opt.hourly[hour], city)) : pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.optField, city)); $("legend").innerHTML = `<span>${percentile(values, .03).toFixed(0)}</span><span class="gradient"></span><span>${percentile(values, .97).toFixed(0)}${layer === "temperature" ? "°C" : " Φ"}</span><span>○ 냉각거점</span><span>→ 열유속</span>`; }
+  if (layer === "materials") $("legend").innerHTML = `<span>재료색</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ MCLP 거점</span><span>→ 순 열유속</span>`;
+  else { const values = layer === "temperature" ? pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.material.hourly[hour], city), pedestrianValues(latest.opt.hourly[hour], city)) : pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.materialField, city), pedestrianValues(latest.optField, city)); $("legend").innerHTML = `<span>${percentile(values, .03).toFixed(0)}</span><span class="gradient"></span><span>${percentile(values, .97).toFixed(0)}${layer === "temperature" ? "°C" : " Φ"}</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ 냉각거점</span><span>→ 열유속</span>`; }
+}
+
+function updateScenarioSummaries() {
+  const base = mean(pedestrianValues(latest.baseField, city));
+  const value = side => mean(pedestrianValues(side === "material" ? latest.materialField : latest.optField, city));
+  const text = side => { const score = value(side), delta = score - base; return `평균 ${score.toFixed(1)} Φ · 현재 대비 ${delta > 0 ? "+" : ""}${delta.toFixed(1)} Φ`; };
+  $("baseline-summary").textContent = `평균 ${base.toFixed(1)} Φ · 비교 기준`;
+  $("material-summary").textContent = `${text("material")} · ${plan.budgetCount}셀 물성만 교체`;
+  $("optimized-summary").textContent = `${text("opt")} · ${plan.budgetCount}셀 위치 최적화`;
 }
 
 function metrics() {
@@ -151,17 +228,19 @@ function render() {
   if (!latest) return;
   const hour = +controls.hour.value;
   latest.baseField = potentialField(baselineTypes, latest.base, hour, latest.settings, city); latest.optField = potentialField(optimizedTypes, latest.opt, hour, latest.settings, city);
-  latest.baseFlux = fluxField(latest.baseField, latest.settings, city); latest.optFlux = fluxField(latest.optField, latest.settings, city);
-  drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); drawProfile(); updateLegend(); scene3d?.render();
+  latest.materialField = potentialField(materialTypes, latest.material, hour, latest.settings, city);
+  latest.baseFlux = fluxField(latest.baseField, latest.settings, city); latest.materialFlux = fluxField(latest.materialField, latest.settings, city); latest.optFlux = fluxField(latest.optField, latest.settings, city);
+  drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.material, "material", materialTypes, latest.material, latest.materialField, latest.materialFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); drawProfile(); updateLegend(); updateScenarioSummaries(); scene3d?.render();
 }
 
-function animate() { if (latest && controls.particles.checked) { drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); } animation = requestAnimationFrame(animate); }
+function animate() { if (latest && controls.particles.checked) { drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.material, "material", materialTypes, latest.material, latest.materialField, latest.materialFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); } animation = requestAnimationFrame(animate); }
 
 function run() {
   clearTimeout(runTimer); updateOutputs(); $("status").textContent = "텐서 CA 계산 중"; $("run-button").disabled = true;
   requestAnimationFrame(() => {
     const modelSettings = settings(), base = simulate(baselineTypes, modelSettings, city); modelSettings.calibrationBias = base.calibrationBias; plan = optimize(baselineTypes, base, modelSettings, city); optimizedTypes = plan.types;
-    const opt = simulate(optimizedTypes, modelSettings, city); latest = { settings: modelSettings, base, opt };
+    materialTypes = materialOnlyTypes(baselineTypes, plan.budgetCount);
+    const material = simulate(materialTypes, modelSettings, city), opt = simulate(optimizedTypes, modelSettings, city); latest = { settings: modelSettings, base, material, opt };
     resetParticles(); render(); metrics();
     $("pipe-dbscan").textContent = `${plan.clusterCount}개 고온 군집 탐지`; $("pipe-mclp").textContent = `${plan.hubs.length}개 냉각 거점 선정`; $("pipe-ga").textContent = `${plan.generations}세대 · ${plan.budgetCount}셀 재배치`; $("pipe-ca").textContent = `[24, 7, ${GRID_H}, ${GRID_W}] 정보텐서 · 144 스텝`;
     $("status").textContent = `Landsat ${GUWOL_HISTORY.sceneCount}장 · 3D 계산 완료`; $("run-button").disabled = false;
@@ -173,13 +252,13 @@ function hover(canvas, side) {
   canvas.addEventListener("pointermove", event => {
     if (!latest) return;
     const rect = canvas.getBoundingClientRect(), x = Math.floor((event.clientX - rect.left) / rect.width * GRID_W), y = Math.floor((event.clientY - rect.top) / rect.height * GRID_H), i = y * GRID_W + x;
-    const types = side === "base" ? baselineTypes : optimizedTypes, result = side === "base" ? latest.base : latest.opt, field = side === "base" ? latest.baseField : latest.optField, material = byId(types[i]), [u, v] = windVectorAt(i, latest.settings, city);
-    $("cell-detail").textContent = `${side === "base" ? "기준" : "AI"} (${x + 1}, ${y + 1}) · ${material.name} · T ${result.hourly[+controls.hour.value][i].toFixed(1)}°C · α ${material.albedo.toFixed(2)} · H ${city.heights[i].toFixed(0)}m · W ${(latest.settings.moisture * 100).toFixed(0)}% · v (${u.toFixed(2)}, ${v.toFixed(2)}) · Φ ${field[i].toFixed(1)}`;
+    const types = scenarioTypes(side), result = side === "base" ? latest.base : side === "material" ? latest.material : latest.opt, field = side === "base" ? latest.baseField : side === "material" ? latest.materialField : latest.optField, material = byId(types[i]), [u, v] = windVectorAt(i, latest.settings, city), zone = voronoiZoneAt(x + .5, y + .5);
+    $("cell-detail").textContent = `${scenarioName(side)} · 보로노이 V-${String(zone).padStart(2, "0")} · (${x + 1}, ${y + 1}) · ${materialLabel(material)} · T ${result.hourly[+controls.hour.value][i].toFixed(1)}°C · α ${material.albedo.toFixed(2)} · ε ${material.emissivity.toFixed(2)} · H ${city.heights[i].toFixed(0)}m · W ${(latest.settings.moisture * 100).toFixed(0)}% · v (${u.toFixed(2)}, ${v.toFixed(2)}) · Φ ${field[i].toFixed(1)}`;
   });
-  canvas.addEventListener("pointerleave", () => { $("cell-detail").textContent = "지도를 가리키면 셀의 정보행렬 Sᵢⱼ = (T, M, u, v, H, W, α)을 확인할 수 있습니다."; });
+  canvas.addEventListener("pointerleave", () => { $("cell-detail").textContent = "지도를 가리키면 세분화된 보로노이 구역과 정보행렬 Sᵢⱼ = (T, M, u, v, H, W, α, ε)을 확인할 수 있습니다."; });
 }
 
-$("material-table").innerHTML = MATERIALS.map(m => `<tr><td>${m.name}</td><td>${m.albedo.toFixed(2)}</td><td>${m.emissivity.toFixed(2)}</td><td>${m.storage}</td><td>${m.permeability}</td><td>${m.source}</td></tr>`).join("");
+$("material-table").innerHTML = MATERIALS.map(m => `<tr><td>${m.name} <span class="rating rating-${m.rating.toLowerCase().replace(" ", "-")}">(${m.rating})</span></td><td>${m.albedo.toFixed(2)}</td><td>${m.emissivity.toFixed(2)}</td><td>${m.storage}</td><td>${m.permeability}</td><td>${m.source}</td></tr>`).join("");
 $('dataset-summary').innerHTML = `<strong>${GUWOL_HISTORY.period} · ${GUWOL_HISTORY.sceneCount}장</strong><span>다년 LST 평균 ${GUWOL_HISTORY.summary.meanLstC.toFixed(1)}°C · 평균 P90 ${GUWOL_HISTORY.summary.meanP90LstC.toFixed(1)}°C · QA_PIXEL 구름 제거</span><span>OSM 건물 ${GUWOL_DATA.osm.featureCounts.building.toLocaleString('ko-KR')}개 · 도로 ${GUWOL_DATA.osm.featureCounts.road.toLocaleString('ko-KR')}개 · 격자 약 108 × 167 m</span>`;
 $("history-summary").innerHTML = [
   ["위성 장면", `${GUWOL_HISTORY.sceneCount}장`, "Landsat 8·9"],
@@ -203,7 +282,7 @@ $("rotate-left").addEventListener("click", () => scene3d.rotate(-Math.PI / 8));
 $("rotate-right").addEventListener("click", () => scene3d.rotate(Math.PI / 8));
 $("reset-view").addEventListener("click", () => scene3d.reset());
 sceneControls.exaggeration.addEventListener("input", updateOutputs);
-hover(canvases.base, "base"); hover(canvases.opt, "opt");
+hover(canvases.base, "base"); hover(canvases.material, "material"); hover(canvases.opt, "opt");
 [controls.air, controls.solar, controls.moisture, controls.budget, controls.wind, controls.objective].forEach(control => control.addEventListener("input", scheduleRun));
 [controls.hour, controls.layer].forEach(control => control.addEventListener("input", () => { updateOutputs(); render(); }));
 controls.particles.addEventListener("change", render); $("run-button").addEventListener("click", run);
