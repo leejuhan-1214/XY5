@@ -1,6 +1,6 @@
 import { MATERIALS, byId, materialLabel, materialOnlyTypes } from "./materials.js";
 import { GRID_W, GRID_H, CELL_COUNT, createCity, simulate, potentialField, fluxField, optimize, percentile, mean, pedestrianValues, exposure, tracerResidence, windVectorAt } from "./engine.js";
-import { CityScene3D } from "./scene3d.js";
+import { CityScene3D } from "./atlas-scene.js";
 import { GUWOL_DATA } from "../data/guwol-data.js";
 import { GUWOL_HISTORY } from "../data/guwol-history.js";
 
@@ -10,14 +10,15 @@ const canvases = { base: $("baseline-map"), material: $("material-map"), opt: $(
 const sceneControls = { metric: $("metric-3d"), scenario: $("scenario-3d"), date: $("scene-date-3d"), exaggeration: $("exaggeration-3d") };
 const city = createCity(GUWOL_DATA, GUWOL_HISTORY);
 const baselineTypes = city.types;
+let fixedCalibrationBias = null;
 let materialTypes = Uint8Array.from(baselineTypes);
 let optimizedTypes = Uint8Array.from(baselineTypes), latest = null, plan = null, animation = 0, particles = [], runTimer = 0, basemapImage = null, basemapUrl = "", scene3d = null;
 
-const WIND_NAMES = { 0: "서풍", 45: "북서풍", 90: "북풍", 135: "북동풍", 180: "동풍", 225: "남동풍", 270: "남풍", 315: "남서풍" };
+const WIND_NAMES = { 0: "북풍", 45: "북동풍", 90: "동풍", 135: "남동풍", 180: "남풍", 225: "남서풍", 270: "서풍", 315: "북서풍" };
 function settings() {
   const observedPeak = Math.max(...GUWOL_DATA.weather.temperature_2m), observedSolar = Math.max(...GUWOL_DATA.weather.shortwave_radiation);
   const weather = { ...GUWOL_DATA.weather, temperature_2m: GUWOL_DATA.weather.temperature_2m.map(value => value + (+controls.air.value - observedPeak)), shortwave_radiation: GUWOL_DATA.weather.shortwave_radiation.map(value => value * +controls.solar.value / observedSolar) };
-  return { peakAir: +controls.air.value, solar: +controls.solar.value, moisture: +controls.moisture.value / 100, budget: +controls.budget.value, windDeg: +controls.wind.value, objective: controls.objective.value, weather, observedHour: 11, calibrateLST: true };
+  return { peakAir: +controls.air.value, solar: +controls.solar.value, moisture: +controls.moisture.value / 100, budget: +controls.budget.value, windDeg: +controls.wind.value, objective: controls.objective.value, weather, observedHour: 11, calibrateLST: true, calibrationBias: fixedCalibrationBias };
 }
 function updateOutputs() {
   $("hour-output").textContent = `${String(controls.hour.value).padStart(2, "0")}시`;
@@ -200,7 +201,7 @@ function drawProfile() {
 function updateLegend() {
   const hour = +controls.hour.value, layer = controls.layer.value;
   if (layer === "materials") $("legend").innerHTML = `<span>재료색</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ MCLP 거점</span><span>→ 순 열유속</span>`;
-  else { const values = layer === "temperature" ? pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.material.hourly[hour], city), pedestrianValues(latest.opt.hourly[hour], city)) : pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.materialField, city), pedestrianValues(latest.optField, city)); $("legend").innerHTML = `<span>${percentile(values, .03).toFixed(0)}</span><span class="gradient"></span><span>${percentile(values, .97).toFixed(0)}${layer === "temperature" ? "°C" : " Φ"}</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ 냉각거점</span><span>→ 열유속</span>`; }
+  else { const values = layer === "temperature" ? pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.material.hourly[hour], city), pedestrianValues(latest.opt.hourly[hour], city)) : layer === "information" ? pedestrianValues(informationField(baselineTypes, latest.base, hour), city).concat(pedestrianValues(informationField(materialTypes, latest.material, hour), city), pedestrianValues(informationField(optimizedTypes, latest.opt, hour), city)) : pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.materialField, city), pedestrianValues(latest.optField, city)); $("legend").innerHTML = `<span>${percentile(values, .03).toFixed(0)}</span><span class="gradient"></span><span>${percentile(values, .97).toFixed(0)}${layer === "temperature" ? "°C" : layer === "information" ? " 지수" : " Φ"}</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ 냉각거점</span><span>→ 열유속</span>`; }
 }
 
 function updateScenarioSummaries() {
@@ -209,14 +210,14 @@ function updateScenarioSummaries() {
   const text = side => { const score = value(side), delta = score - base; return `평균 ${score.toFixed(1)} Φ · 현재 대비 ${delta > 0 ? "+" : ""}${delta.toFixed(1)} Φ`; };
   $("baseline-summary").textContent = `평균 ${base.toFixed(1)} Φ · 비교 기준`;
   $("material-summary").textContent = `${text("material")} · ${plan.budgetCount}셀 물성만 교체`;
-  $("optimized-summary").textContent = `${text("opt")} · ${plan.budgetCount}셀 위치 최적화`;
+  $("optimized-summary").textContent = `${text("opt")} · ${plan.budgetCount}셀 재료·위치 최적화`;
 }
 
 function metrics() {
   const basePhi = mean(pedestrianValues(latest.baseField, city)), optPhi = mean(pedestrianValues(latest.optField, city));
   const baseResidence = tracerResidence(baselineTypes, latest.baseField, latest.baseFlux, city, latest.baseField), optResidence = tracerResidence(optimizedTypes, latest.optField, latest.optFlux, city, latest.baseField);
   const baseNight = mean(latest.base.sensible.slice(20, 24)), optNight = mean(latest.opt.sensible.slice(20, 24));
-  const threshold = percentile(pedestrianValues(latest.base.hourly[15], city), .8), baseExposure = exposure(latest.base, threshold, city), optExposure = exposure(latest.opt, threshold, city);
+  const hour = +controls.hour.value, threshold = percentile(pedestrianValues(latest.base.hourly[hour], city), .8), baseExposure = exposure(latest.base, threshold, city, hour), optExposure = exposure(latest.opt, threshold, city, hour);
   const signed = (value, unit, digits = 1) => `${value > 0 ? "+" : ""}${value.toFixed(digits)}${unit}`;
   $("metric-potential").textContent = optPhi.toFixed(1); $("metric-potential-delta").textContent = `기준 ${basePhi.toFixed(1)} · ${signed(optPhi - basePhi, " Φ")}`;
   $("metric-residence").textContent = `${optResidence.toFixed(1)}분`; $("metric-residence-delta").textContent = `기준 ${baseResidence.toFixed(1)}분 · ${signed((optResidence - baseResidence) / baseResidence * 100, "%", 0)}`;
@@ -230,10 +231,10 @@ function render() {
   latest.baseField = potentialField(baselineTypes, latest.base, hour, latest.settings, city); latest.optField = potentialField(optimizedTypes, latest.opt, hour, latest.settings, city);
   latest.materialField = potentialField(materialTypes, latest.material, hour, latest.settings, city);
   latest.baseFlux = fluxField(latest.baseField, latest.settings, city); latest.materialFlux = fluxField(latest.materialField, latest.settings, city); latest.optFlux = fluxField(latest.optField, latest.settings, city);
-  drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.material, "material", materialTypes, latest.material, latest.materialField, latest.materialFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); drawProfile(); updateLegend(); updateScenarioSummaries(); scene3d?.render();
+  drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.material, "material", materialTypes, latest.material, latest.materialField, latest.materialFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); drawProfile(); updateLegend(); updateScenarioSummaries(); metrics(); scene3d?.render();
 }
 
-function animate() { if (latest && controls.particles.checked) { drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.material, "material", materialTypes, latest.material, latest.materialField, latest.materialFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); } animation = requestAnimationFrame(animate); }
+function animate() { if (latest && !document.hidden && controls.particles.checked && !matchMedia("(prefers-reduced-motion: reduce)").matches && canvases.base.getBoundingClientRect().bottom > 0 && canvases.base.getBoundingClientRect().top < innerHeight) { drawMap(canvases.base, "base", baselineTypes, latest.base, latest.baseField, latest.baseFlux); drawMap(canvases.material, "material", materialTypes, latest.material, latest.materialField, latest.materialFlux); drawMap(canvases.opt, "opt", optimizedTypes, latest.opt, latest.optField, latest.optFlux); } animation = requestAnimationFrame(animate); }
 
 function run() {
   clearTimeout(runTimer); updateOutputs(); $("status").textContent = "텐서 CA 계산 중"; $("run-button").disabled = true;
@@ -243,7 +244,7 @@ function run() {
     const material = simulate(materialTypes, modelSettings, city), opt = simulate(optimizedTypes, modelSettings, city); latest = { settings: modelSettings, base, material, opt };
     resetParticles(); render(); metrics();
     $("pipe-dbscan").textContent = `${plan.clusterCount}개 고온 군집 탐지`; $("pipe-mclp").textContent = `${plan.hubs.length}개 냉각 거점 선정`; $("pipe-ga").textContent = `${plan.generations}세대 · ${plan.budgetCount}셀 재배치`; $("pipe-ca").textContent = `[24, 7, ${GRID_H}, ${GRID_W}] 정보텐서 · 144 스텝`;
-    $("status").textContent = `Landsat ${GUWOL_HISTORY.sceneCount}장 · 3D 계산 완료`; $("run-button").disabled = false;
+    $("status").textContent = `Landsat ${GUWOL_HISTORY.sceneCount}장 · 분석 완료`; $("run-button").disabled = false;
   });
 }
 
@@ -252,6 +253,7 @@ function hover(canvas, side) {
   canvas.addEventListener("pointermove", event => {
     if (!latest) return;
     const rect = canvas.getBoundingClientRect(), x = Math.floor((event.clientX - rect.left) / rect.width * GRID_W), y = Math.floor((event.clientY - rect.top) / rect.height * GRID_H), i = y * GRID_W + x;
+    if(x < 0 || x >= GRID_W || y < 0 || y >= GRID_H) return;
     const types = scenarioTypes(side), result = side === "base" ? latest.base : side === "material" ? latest.material : latest.opt, field = side === "base" ? latest.baseField : side === "material" ? latest.materialField : latest.optField, material = byId(types[i]), [u, v] = windVectorAt(i, latest.settings, city), zone = voronoiZoneAt(x + .5, y + .5);
     $("cell-detail").textContent = `${scenarioName(side)} · 보로노이 V-${String(zone).padStart(2, "0")} · (${x + 1}, ${y + 1}) · ${materialLabel(material)} · T ${result.hourly[+controls.hour.value][i].toFixed(1)}°C · α ${material.albedo.toFixed(2)} · ε ${material.emissivity.toFixed(2)} · H ${city.heights[i].toFixed(0)}m · W ${(latest.settings.moisture * 100).toFixed(0)}% · v (${u.toFixed(2)}, ${v.toFixed(2)}) · Φ ${field[i].toFixed(1)}`;
   });
@@ -272,7 +274,7 @@ $("scene-strip").innerHTML = GUWOL_HISTORY.scenes.map(scene => {
   return `<button class="scene-bar" style="--height:${height.toFixed(0)}px" data-year="${scene.date.slice(2, 4)}" data-scene-index="${GUWOL_HISTORY.scenes.indexOf(scene)}" title="${scene.date} · 평균 ${scene.meanLstC.toFixed(1)}°C · 유효 ${scene.aoiValidPercent.toFixed(0)}%" aria-label="${scene.date}, 평균 지표면온도 ${scene.meanLstC.toFixed(1)}도"></button>`;
 }).join("");
 sceneControls.date.innerHTML = GUWOL_HISTORY.scenes.map((scene, index) => `<option value="${index}" ${index === GUWOL_HISTORY.sceneCount - 1 ? "selected" : ""}>${scene.date} · ${scene.meanLstC.toFixed(1)}°C</option>`).join("");
-scene3d = new CityScene3D($("city-3d"), { city, history: GUWOL_HISTORY, getState: () => ({ latest, optimizedTypes }), metricSelect: sceneControls.metric, scenarioSelect: sceneControls.scenario, sceneSelect: sceneControls.date, exaggerationInput: sceneControls.exaggeration, detailElement: $("detail-3d") });
+scene3d = new CityScene3D($("city-3d"), { city, history: GUWOL_HISTORY, getState: () => ({ latest, optimizedTypes, materialTypes, plan, hour: +controls.hour.value }), metricSelect: sceneControls.metric, scenarioSelect: sceneControls.scenario, sceneSelect: sceneControls.date, exaggerationInput: sceneControls.exaggeration, detailElement: $("detail-3d") });
 document.querySelectorAll(".scene-bar").forEach(button => button.addEventListener("click", () => {
   sceneControls.date.value = button.dataset.sceneIndex;
   sceneControls.metric.value = "scene";
@@ -301,8 +303,11 @@ controls.air.value = Math.round(Math.max(...GUWOL_DATA.weather.temperature_2m));
 controls.solar.value = Math.round(Math.max(...GUWOL_DATA.weather.shortwave_radiation) / 25) * 25;
 controls.moisture.value = Math.round(GUWOL_DATA.weather.soil_moisture_0_to_7cm[11] * 100 / 5) * 5;
 controls.wind.value = Math.round(GUWOL_DATA.weather.wind_direction_10m[11] / 45) * 45 % 360;
+fixedCalibrationBias = simulate(baselineTypes, { ...settings(), weather: GUWOL_DATA.weather, moisture: GUWOL_DATA.weather.soil_moisture_0_to_7cm[11], calibrationBias: null }, city).calibrationBias;
 const defaultMap = new Image();
 defaultMap.onload = () => { basemapImage = defaultMap; render(); };
 defaultMap.src = "data/guwol-osm-basemap.webp";
-updateOutputs(); run(); animation = requestAnimationFrame(animate);
+updateOutputs();
+import('./atlas-ui.js').then(({connectAtlas}) => connectAtlas({city, getState:()=>({latest, optimizedTypes,materialTypes,plan,hour:+controls.hour.value}),scene:scene3d,controls,sceneControls,run,render,settings}));
+run(); animation = requestAnimationFrame(animate);
 window.addEventListener("beforeunload", () => { cancelAnimationFrame(animation); if (basemapUrl) URL.revokeObjectURL(basemapUrl); });

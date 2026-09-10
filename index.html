@@ -4,25 +4,32 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="다년 Landsat·OpenStreetMap·과거기상으로 분석한 인천 구월동 AI 열섬 저감 3D 시뮬레이터">
-  <meta name="theme-color" content="#07131c">
-  <title>Urban Heat Potential Lab</title>
+  <meta name="theme-color" content="#101315">
+  <title>GUWOL HEAT ATLAS · 구월동 3D 열환경 연구실</title>
   <link rel="stylesheet" href="src/styles.css">
+  <link rel="stylesheet" href="src/atlas.css">
 </head>
 <body>
   <a class="skip-link" href="#main">본문으로 이동</a>
-  <header class="site-header">
-    <div>
-      <p class="eyebrow">URBAN HEAT POTENTIAL LAB</p>
-      <h1>구월동 열섬을 다년 위성과 3D ‘열지형’으로 읽는 AI 도시설계</h1>
-      <p class="subtitle">2018–2025년 여름 Landsat 8·9 열영상, 구월동 OpenStreetMap 건물·도로·녹지, 시간별 재분석 기상을 같은 격자에 정렬해 반복 고온지를 찾고 재료와 배치를 최적화합니다.</p>
-    </div>
-    <div class="header-actions">
-      <span id="status" class="status" aria-live="polite">모델 준비 중</span>
-      <a class="button secondary" href="methodology.html">방법론 보기</a>
-    </div>
-  </header>
+<header class="atlas-header"><a class="brand" href="#main"><span class="brand-symbol">G<span>°</span></span><span>GUWOL <b>HEAT ATLAS</b><small>구월동 도시 열환경 연구실</small></span></a><nav aria-label="주요 메뉴"><a class="active" href="#main">도시 탐색</a><a href="#compare">시나리오 비교</a><a href="#observations">위성 기록</a></nav><a class="method-link" href="methodology.html">데이터와 방법론 ↗</a></header>
 
-  <main id="main">
+  <main id="main"><section class="atlas" aria-labelledby="spatial-title">
+  <div class="atlas-heading"><div><p class="eyebrow">INCHEON, SOUTH KOREA / 37.4474° N · 126.7063° E</p><h1 id="spatial-title">도시의 열을 읽다<span>구월동</span></h1></div><div class="atlas-status"><span class="research-badge">연구 · 교육용 모델</span><span id="status" role="status">도시를 준비하고 있습니다</span></div></div>
+  <div class="atlas-workspace">
+    <aside class="explorer" aria-label="지도 탐색 설정"><div class="panel-caption"><span>탐색 설정</span><span>01 / EXPLORE</span></div>
+      <label class="field-label" for="metric-3d">어떤 열을 볼까요?</label><select id="metric-3d"><optgroup label="시뮬레이션 · 선택한 시각"><option value="temperature" selected>모의 지표면온도</option><option value="delta">현재 대비 온도 변화</option><option value="potential">열퍼텐셜</option></optgroup><optgroup label="위성 관측 · 시나리오 공통"><option value="frequency">반복 고온 빈도</option><option value="mean">다년 평균 LST</option><option value="p90">다년 고온 P90</option><option value="trend">상대 열추세</option><option value="ndvi">중앙 NDVI</option><option value="scene">개별 위성 장면 LST</option></optgroup></select>
+      <p id="metric-description" class="help-text">촬영일마다 동네에서 가장 뜨거운 상위 20%에 포함된 빈도입니다.</p>
+      <label class="field-label" for="scenario-3d">도시 시나리오</label><select id="scenario-3d"><option value="baseline" selected>01 · 현재 구월동</option><option value="material">02 · 재료 물성 변경</option><option value="optimized">03 · AI 재료·위치 최적화</option></select>
+      <p class="help-text">동일 기상·형상·변경 셀 수에서 비교합니다. AI는 재료 종류와 위치를 함께 선택합니다.</p>
+      <label class="field-label" for="scene-date-3d">위성 촬영일</label><select id="scene-date-3d"></select>
+      <label class="field-label" for="exaggeration-3d">건물 높이 강조 <output id="exaggeration-output">1.6×</output></label><input id="exaggeration-3d" type="range" min="0.6" max="3" value="1.6" step="0.1">
+      <div class="scene-buttons"><button id="rotate-left" class="icon-button" aria-label="왼쪽으로 회전">↺</button><button id="reset-view" class="icon-button">전체 보기</button><button id="rotate-right" class="icon-button" aria-label="오른쪽으로 회전">↻</button></div>
+      <div class="explorer-foot"><strong>데이터로 만든 작은 도시</strong><p>24 × 18 직사각형 분석 격자<br>OSM 집계 건물 · 약 108 × 167 m / 셀</p><a href="#experiment-title">실험 조건 조정 ↓</a></div>
+    </aside>
+    <div class="map-stage" id="map-stage"><div class="canvas-3d-shell"><canvas id="city-3d" tabindex="0" aria-label="구월동 3D 분석 격자. 드래그 회전, 휠 확대"></canvas></div><div class="map-corner"><span class="map-kicker">GUWOL / URBAN FIELD</span><span>도시 형상 × 열 분포</span></div><div class="map-coordinate">N ↑<small>구월1–4동 생활권</small></div><div class="map-instructions">드래그 회전 · 휠 확대 · 건물에 포인터를 올려 상세 보기</div></div>
+  </div><p id="detail-3d" class="cell-detail" aria-live="polite">도시의 셀을 가리키면 재료·건물 높이·열지표를 확인할 수 있습니다.</p>
+  <div class="atlas-footnote"><span><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · Landsat 8/9 · Open-Meteo</span><span>격자로 집계한 해석 모형 · 지표면온도 ≠ 대기온도</span></div>
+</section>
     <section class="control-band" aria-labelledby="experiment-title">
       <div class="section-heading">
         <div>
@@ -38,7 +45,7 @@
         </article>
         <article>
           <strong>통제변인</strong>
-          <p>구월동 경계·건물·도로, 동일 기상, 다년 Landsat 열분포, 시드 8132026</p>
+          <p>구월동 주변 격자·건물·도로, 동일 기상, 다년 Landsat 열분포, 시드 8132026</p>
         </article>
         <article>
           <strong>종속변인</strong>
@@ -54,15 +61,15 @@
           <input id="hour" type="range" min="0" max="23" value="15">
         </label>
         <label>
-          <span>관측일 최고기온 <output id="air-output">31°C</output></span>
+          <span>최고기온 가정 <output id="air-output">31°C</output></span>
           <input id="air" type="range" min="30" max="40" value="34">
         </label>
         <label>
-          <span>관측일 최대 일사 <output id="solar-output">850 W/m²</output></span>
+          <span>최대 일사 가정 <output id="solar-output">850 W/m²</output></span>
           <input id="solar" type="range" min="550" max="1050" step="25" value="850">
         </label>
         <label>
-          <span>표층 토양수분 <output id="moisture-output">40%</output></span>
+          <span>토양수분 가정 <output id="moisture-output">40%</output></span>
           <input id="moisture" type="range" min="0" max="100" step="5" value="60">
         </label>
         <label>
@@ -70,7 +77,7 @@
           <input id="budget" type="range" min="5" max="35" value="18">
         </label>
         <label>
-          <span>11시 풍향 <output id="wind-output">북서풍</output></span>
+          <span>풍향 가정 <output id="wind-output">북서풍</output></span>
           <input id="wind" type="range" min="0" max="315" step="45" value="0">
         </label>
         <label>
@@ -118,23 +125,23 @@
         <small id="metric-residence-delta">기준 대비</small>
       </article>
       <article class="metric">
-        <span>20–24시 현열 방출</span>
+        <span>20–23시 현열 방출</span>
         <strong id="metric-night">-</strong>
         <small id="metric-night-delta">기준 대비</small>
       </article>
       <article class="metric">
-        <span>고온노출 인구</span>
+        <span>선택 시각 고온노출 지수</span>
         <strong id="metric-exposure">-</strong>
         <small id="metric-exposure-delta">기준 대비</small>
       </article>
     </section>
 
-    <section class="comparison" aria-labelledby="map-title">
+    <section class="comparison" id="compare" aria-labelledby="map-title">
       <div class="section-heading compact">
         <div>
           <p class="eyebrow">POTENTIAL LANDSCAPE</p>
           <h2 id="map-title">정보행렬 기반 열퍼텐셜 지도</h2>
-          <p class="section-description">같은 기상·도시 형상에서 ① 현재 상태, ② 재료 물성만 교체, ③ AI 공간 재배치를 나란히 비교합니다.</p>
+          <p class="section-description">같은 기상·도시 형상에서 현재 상태, 재료만 교체한 경우, AI가 재료와 위치를 함께 선택한 경우를 비교합니다. 두 개입안의 변경 셀 수는 같습니다.</p>
         </div>
         <div id="legend" class="legend" aria-label="지도 범례"></div>
       </div>
@@ -152,7 +159,7 @@
           <figcaption>
             <span class="scenario-number">02 · MATERIAL ONLY</span>
             <strong>재료 물성만 변경</strong>
-            <span>AI와 같은 변경 셀 수 · 반사율·방사율·수분만 교체</span>
+            <span>AI와 같은 변경 셀 수 · 반사율·방사율·열용량·수분 관련 물성 교체</span>
           </figcaption>
           <div class="canvas-shell"><canvas id="material-map" aria-label="재료 물성만 변경한 도시 열퍼텐셜 지도"></canvas></div>
           <div id="material-summary" class="scenario-summary" aria-live="polite">공간 최적화 없음</div>
@@ -173,46 +180,13 @@
       </div>
     </section>
 
-    <section class="spatial-lab" aria-labelledby="spatial-title">
-      <div class="section-heading">
-        <div>
-          <p class="eyebrow">MULTI-TEMPORAL · INTERACTIVE 3D</p>
-          <h2 id="spatial-title">여러 위성 장면으로 만든 구월동 3D 열지형</h2>
-        </div>
-        <span class="method-badge">QA_PIXEL 구름 제거 · 장면별 상위 20%</span>
-      </div>
-      <div class="spatial-grid">
-        <article class="history-panel">
+<section class="spatial-lab" id="observations"><div class="section-heading"><div><p class="eyebrow">THE OBSERVATION RECORD</p><h2>여름의 13개 장면, 같은 동네의 기록</h2></div><span class="method-badge">Landsat 8·9 · 2018–2025</span></div><article class="history-panel">
           <h3>다년 분석 요약</h3>
           <div id="history-summary" class="history-summary" aria-label="다년 위성 분석 요약"></div>
           <h3>사용한 위성 장면</h3>
           <div id="scene-strip" class="scene-strip" aria-label="Landsat 장면별 평균 지표면온도"></div>
           <p class="data-note">막대는 각 장면의 구월동 평균 지표면온도입니다. ‘반복 고온’은 서로 다른 날마다 구월동 내부 상위 20%에 포함된 빈도라서, 한 번의 폭염보다 지속적으로 뜨거운 장소를 우선합니다.</p>
-        </article>
-        <article class="model3d-panel">
-          <div class="scene-controls">
-            <label><span>열지형 지표</span><select id="metric-3d">
-              <option value="frequency" selected>반복 고온 빈도</option>
-              <option value="mean">다년 평균 LST</option>
-              <option value="p90">다년 고온 P90</option>
-              <option value="trend">상대 열추세</option>
-              <option value="ndvi">중앙 NDVI</option>
-              <option value="scene">개별 위성 장면 LST</option>
-            </select></label>
-            <label><span>도시 배치</span><select id="scenario-3d"><option value="baseline">현재 도시</option><option value="optimized" selected>AI 재배치</option></select></label>
-            <label><span>위성 촬영일</span><select id="scene-date-3d" aria-label="3D에 표시할 위성 촬영일"></select></label>
-            <label><span>높이 강조 <output id="exaggeration-output">1.6×</output></span><input id="exaggeration-3d" type="range" min="0.6" max="3" value="1.6" step="0.1"></label>
-            <div class="scene-buttons" aria-label="3D 보기 조작">
-              <button id="rotate-left" class="icon-button" type="button" aria-label="왼쪽으로 회전">↺</button>
-              <button id="reset-view" class="icon-button" type="button">보기 초기화</button>
-              <button id="rotate-right" class="icon-button" type="button" aria-label="오른쪽으로 회전">↻</button>
-            </div>
-          </div>
-          <div class="canvas-3d-shell"><canvas id="city-3d" aria-label="구월동 건물 높이와 다년 열지표를 결합한 회전 가능한 3D 모델"></canvas></div>
-          <p id="detail-3d" class="cell-detail" aria-live="polite">건물에 포인터를 올리면 재료·높이·다년 열지표가 표시됩니다. 드래그로 회전하고 휠로 확대할 수 있습니다.</p>
-        </article>
-      </div>
-    </section>
+        </article></section>
 
     <section class="analysis-grid">
       <article class="panel">
@@ -253,7 +227,7 @@
   </main>
 
   <footer>
-    <p>Urban Heat Potential Lab · 연구·교육용 오픈소스 프로토타입</p>
+    <p>Urban Heat Potential Lab · 연구·교육용 오픈소스 · GUWOL HEAT ATLAS 2.0</p>
     <nav aria-label="프로젝트 문서"><a href="README.md">README</a><a href="methodology.html">방법론</a><a href="LICENSE">MIT License</a></nav>
   </footer>
 

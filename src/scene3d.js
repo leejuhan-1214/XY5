@@ -125,12 +125,13 @@ export class CityScene3D {
   render() {
     const { context: ctx, width, height } = this.setup(), project = this.projection(width, height), state = this.getState();
     const optimized = this.scenarioSelect.value === "optimized" && state?.optimizedTypes;
-    const types = optimized ? state.optimizedTypes : this.city.types;
-    const { metric, values } = this.metricValues();
+    const types = optimized ? state.optimizedTypes : this.scenarioSelect.value === "material" && state?.materialTypes ? state.materialTypes : this.city.types;
+    const { metric, values, min: sharedMin, max: sharedMax, palette: sharedPalette } = this.metricValues();
     const selected = values.filter((_, index) => this.city.insideBoundary[index]);
     let min = percentile(selected, .03), max = percentile(selected, .97);
     if (metric.key === "trendCPerYear") { const magnitude = Math.max(Math.abs(min), Math.abs(max), .01); min = -magnitude; max = magnitude; }
-    const palette = PALETTES[metric.palette];
+    if (Number.isFinite(sharedMin)) { min = sharedMin; max = sharedMax; }
+    const palette = sharedPalette || PALETTES[metric.palette];
     ctx.clearRect(0, 0, width, height);
     const background = ctx.createLinearGradient(0, 0, 0, height);
     background.addColorStop(0, "#0d2938"); background.addColorStop(1, "#061019");
@@ -168,7 +169,7 @@ export class CityScene3D {
     }
 
     ctx.fillStyle = "rgba(6,16,25,.82)"; ctx.fillRect(14, 14, Math.min(340, width - 28), 57);
-    ctx.fillStyle = "#edf8fb"; ctx.font = "700 13px system-ui"; ctx.fillText(`${optimized ? "AI 재배치" : "현재 도시"} · ${metric.label}`, 26, 36);
+    ctx.fillStyle = "#edf8fb"; ctx.font = "700 13px system-ui"; ctx.fillText(`${optimized ? "AI 재료·위치 최적화" : this.scenarioSelect.value === "material" ? "재료 물성 변경" : "현재 도시"} · ${metric.label}`, 26, 36);
     ctx.fillStyle = "#a9c1ca"; ctx.font = "12px system-ui"; ctx.fillText(`${min.toFixed(metric.key === "trendCPerYear" ? 3 : 1)}–${max.toFixed(metric.key === "trendCPerYear" ? 3 : 1)} ${metric.unit} · 드래그 회전 / 휠 확대`, 26, 57);
   }
 

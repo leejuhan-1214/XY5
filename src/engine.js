@@ -75,7 +75,8 @@ function shadeAt(i, hour, types, city) {
 
 export function windVectorAt(i, settings, city) {
   const angle = settings.windDeg * Math.PI / 180;
-  let u = Math.cos(angle), v = Math.sin(angle);
+  // Meteorological direction is where wind comes FROM; grid y points south.
+  let u = -Math.sin(angle), v = Math.cos(angle);
   const x = i % GRID_W, y = Math.floor(i / GRID_W);
   let density = 0;
   for (let yy = Math.max(0, y - 2); yy <= Math.min(GRID_H - 1, y + 2); yy += 1) for (let xx = Math.max(0, x - 2); xx <= Math.min(GRID_W - 1, x + 2); xx += 1) density += city.heights[yy * GRID_W + xx] / 45;
@@ -89,7 +90,7 @@ export function simulate(types, settings, city) {
   let surface = new Float32Array(CELL_COUNT), bulk = new Float32Array(CELL_COUNT), nextSurface = new Float32Array(CELL_COUNT), nextBulk = new Float32Array(CELL_COUNT);
   const initial = airAt(0, settings);
   for (let i = 0; i < CELL_COUNT; i += 1) { surface[i] = initial + (buildingAt(types, i) ? 1.2 : 2); bulk[i] = initial + 3; }
-  const hourly = [], sensible = [], solarAbsorbed = [];
+  const hourly = [Float32Array.from(surface)], sensible = [], solarAbsorbed = [new Float32Array(CELL_COUNT)];
   for (let step = 0; step < 144; step += 1) {
     const hour = (step + .5) / 6, air = airAt(hour, settings);
     const solarFactor = Math.max(0, Math.sin(Math.PI * (hour - 6) / 12));
@@ -116,7 +117,7 @@ export function simulate(types, settings, city) {
     }
     [surface, nextSurface] = [nextSurface, surface];
     [bulk, nextBulk] = [nextBulk, bulk];
-    if ((step + 1) % 6 === 0) {
+    if ((step + 1) % 6 === 0 && (step + 1) / 6 < 24) {
       hourly.push(Float32Array.from(surface));
       solarAbsorbed.push(absorbedStep);
       let flux = 0, area = 0;
@@ -133,6 +134,18 @@ export function simulate(types, settings, city) {
       const weight = Math.max(.12, Math.exp(-((hour - observedHour) ** 2) / 35));
       for (let i = 0; i < CELL_COUNT; i += 1) hourly[hour][i] += calibrationBias[i] * weight;
     }
+  }
+  // Recompute heat flux from the calibrated temperatures actually shown to users.
+  sensible.length = 0;
+  for (let hour = 0; hour < 24; hour += 1) {
+    let flux = 0, area = 0;
+    // Match instantaneous radiative forcing to the same integer-hour snapshot.
+    const solar = settings.weather?.shortwave_radiation?.[hour] ?? settings.solar * Math.max(0, Math.sin(Math.PI * (hour - 6) / 12));
+    solarAbsorbed[hour] = Float32Array.from(types, (id, i) => (1 - byId(id).albedo) * solar * shadeAt(i, hour, types, city));
+    for (let i = 0; i < CELL_COUNT; i += 1) if (!city.buildings[i] && (!city.insideBoundary || city.insideBoundary[i])) {
+      flux += Math.max(0, 10.2 * (hourly[hour][i] - airAt(hour, settings))); area += 1;
+    }
+    sensible.push(flux / Math.max(1, area));
   }
   return { hourly, sensible, solarAbsorbed, calibrationBias };
 }
@@ -281,8 +294,8 @@ export function optimize(baseTypes, baseResult, settings, city) {
 }
 
 export function pedestrianValues(array, city) { return Array.from(array).filter((_, i) => !city.buildings[i] && (!city.insideBoundary || city.insideBoundary[i])); }
-export function exposure(result, threshold, city) {
-  const values = result.hourly[15]; let numerator = 0, denominator = 0;
+export function exposure(result, threshold, city, hour = 15) {
+  const values = result.hourly[hour]; let numerator = 0, denominator = 0;
   for (let i = 0; i < CELL_COUNT; i += 1) if (!city.buildings[i] && (!city.insideBoundary || city.insideBoundary[i])) { const weight = city.population[i] * city.vulnerability[i]; denominator += weight; if (values[i] >= threshold) numerator += weight; }
   return 100 * numerator / Math.max(1, denominator);
 }
