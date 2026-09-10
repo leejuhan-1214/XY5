@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { GUWOL_DATA } from '../data/guwol-data.js';
+import { GRID_W, GRID_H, CELL_COUNT } from '../src/engine.js';
+import { cellBounds, cellCenter, cellAt, heatFeatures, hubFeatures, footprintPoint } from '../src/map-data.js';
+
+const bbox = GUWOL_DATA.bbox;
+const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-10, `${a} != ${b}`);
+const first = cellBounds(0, bbox), last = cellBounds(CELL_COUNT - 1, bbox);
+close(first[0], bbox[0]); close(first[3], bbox[3]);
+close(last[1], bbox[1]); close(last[2], bbox[2]);
+assert.ok(cellCenter(0, bbox)[1] > cellCenter(GRID_W, bbox)[1], 'row 0 is north, increasing rows move south');
+assert.ok(cellCenter(1, bbox)[0] > cellCenter(0, bbox)[0], 'increasing columns move east');
+for (let i = 0; i < CELL_COUNT; i++) {
+  const center = cellCenter(i, bbox);
+  assert.equal(cellAt(...center, bbox), i, 'coordinate -> cell must round-trip');
+  const [w,s,e,n] = cellBounds(i, bbox);
+  assert.ok(center[0] > w && center[0] < e && center[1] > s && center[1] < n);
+}
+assert.equal(cellAt(bbox[0] - .001, bbox[1], bbox), null);
+assert.equal(cellAt(bbox[0], bbox[1] - .001, bbox), null);
+assert.equal(cellAt(bbox[2] + .001, bbox[3], bbox), null);
+assert.equal(cellAt(bbox[0], bbox[3] + .001, bbox), null);
+assert.equal(cellAt(NaN, bbox[1], bbox), null);
+assert.equal(cellAt(bbox[0], bbox[3], bbox), 0);
+assert.equal(cellAt(bbox[2], bbox[1], bbox), CELL_COUNT - 1);
+assert.throws(() => cellBounds(-1, bbox), RangeError);
+assert.throws(() => cellBounds(CELL_COUNT, bbox), RangeError);
+const selected={values:Array.from({length:CELL_COUNT},(_,i)=>i),min:0,max:CELL_COUNT-1,palette:['#000000','#ffffff']};
+const heat=heatFeatures(bbox,selected,GUWOL_DATA.surface.insideBoundary);
+assert.equal(heat.features.length,CELL_COUNT);
+assert.equal(heat.features[0].properties.color,'#000000');
+assert.equal(heat.features.at(-1).properties.color,'#ffffff');
+assert.equal(heat.features[GRID_W].properties.cell,GRID_W);
+const masked=Array(CELL_COUNT).fill(0);masked[13]=1;
+assert.equal(heatFeatures(bbox,selected,masked).features.length,1);
+const hubs=hubFeatures([3,25,60],bbox);
+for (const [i,feature] of hubs.features.entries()) assert.deepEqual(feature.geometry.coordinates,cellCenter([3,25,60][i],bbox));
+const rectanglePoint=footprintPoint({type:'Polygon',coordinates:[[[126,37],[126.002,37],[126.002,37.002],[126,37.002],[126,37]]]});
+close(rectanglePoint[0],126.001);close(rectanglePoint[1],37.001);
+const holed={type:'Polygon',coordinates:[[[0,0],[4,0],[4,4],[0,4],[0,0]],[[1,1],[3,1],[3,3],[1,3],[1,1]]]};
+const interior=footprintPoint(holed);assert.ok(interior[0]<1||interior[0]>3,'building selection anchor must avoid a courtyard hole');
+assert.equal(footprintPoint(null),null);
+console.log(JSON.stringify({realMapChecks:'passed',coordinateRoundTrips:CELL_COUNT,northFirst:true,rejectsOutside:true,georeferencedHeatCells:heat.features.length,hubs:hubs.features.length}));

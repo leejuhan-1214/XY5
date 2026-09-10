@@ -1,6 +1,6 @@
 import { MATERIALS, byId, materialLabel, materialOnlyTypes } from "./materials.js";
 import { GRID_W, GRID_H, CELL_COUNT, createCity, simulate, potentialField, fluxField, optimize, percentile, mean, pedestrianValues, exposure, tracerResidence, windVectorAt } from "./engine.js";
-import { CityScene3D } from "./atlas-scene.js";
+import { CityScene3D } from "./map-scene.js";
 import { GUWOL_DATA } from "../data/guwol-data.js";
 import { GUWOL_HISTORY } from "../data/guwol-history.js";
 
@@ -278,6 +278,7 @@ scene3d = new CityScene3D($("city-3d"), { city, history: GUWOL_HISTORY, getState
 document.querySelectorAll(".scene-bar").forEach(button => button.addEventListener("click", () => {
   sceneControls.date.value = button.dataset.sceneIndex;
   sceneControls.metric.value = "scene";
+  sceneControls.metric.dispatchEvent(new Event("input"));
   scene3d.render();
 }));
 $("rotate-left").addEventListener("click", () => scene3d.rotate(-Math.PI / 8));

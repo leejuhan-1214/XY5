@@ -1,12 +1,36 @@
-# GUWOL HEAT ATLAS · Urban Heat Potential Lab 2.0
+# GUWOL HEAT ATLAS · 실제 지도 기반 3D 열환경 연구실
 
-**배포:** https://leejuhan-1214.github.io/XY5/
+**사이트:** https://leejuhan-1214.github.io/XY5/
+
+## 실제 지도로 바꾼 3.0
+
+메인 3D 화면은 MapLibre GL JS + OpenFreeMap의 실제 도로·공원·지명·건물 윤곽을 사용합니다. 같은 크기의 셀별 대표 건물을 쌓던 모식도는 메인 화면에서 사용하지 않습니다. 지도는 구월동 중심 [경도 126.706289, 위도 37.4473875]에서 시작합니다.
+
+- 실제 지도에 등록된 건물 polygon을 render_height / render_min_height 정보로 입체화합니다. 높이 정보에는 추정치가 포함되며, 유효 높이가 없으면 6m를 사용합니다. 기본 높이 배율은 1.0배입니다. 이것은 사진측량으로 제작한 질감 있는 디지털 트윈이 아닙니다.
+- 드래그는 이동, 오른쪽 드래그는 회전·기울이기, 휠은 확대입니다. 모바일은 두 손가락으로 확대·회전할 수 있습니다. 2D 전환·자동 회전·낮/노을/밤 조명도 지원합니다.
+- 첫 화면은 실제 지도입니다. **열 분석 겹치기**를 켜면 기존 24×18 분석 값을 실제 경위도 위치에 반투명하게 올립니다. 점선은 분석 범위이며 행정 경계가 아닙니다.
+- 실제 건물이나 지도를 클릭하면 그 위치가 속한 분석 셀의 현재·재료 변경·AI 모의값을 비교합니다. 건물별 측정 온도로 해석하지 않습니다. 분석 범위 밖을 클릭하면 자료 없음으로 표시합니다.
+- AI 냉각 후보점도 실제 경위도에 배치합니다. 위성 기록·24시간 재생·세 시나리오 비교·CSV·실험 조건 JSON 기능은 유지합니다.
+
+### 지도 연결과 라이선스
+
+MapLibre GL JS 5.6.2는 src/vendor에 포함되며 라이선스는 src/vendor/MAPLIBRE-LICENSE.txt에 보존했습니다. 지도 스타일·벡터 타일·글꼴·스프라이트는 OpenFreeMap 공개 서비스에서 불러옵니다. 따라서 지도 표시에는 인터넷이 필요합니다. 지도 로딩이 실패하면 재시도와 원본 지도 링크를 제공합니다.
+
+지도 출처: [OpenFreeMap](https://openfreemap.org/), [OpenMapTiles](https://openmaptiles.org/), [© OpenStreetMap contributors](https://www.openstreetmap.org/copyright). 참고 구현: [MapLibre 공식 3D 건물 예제](https://maplibre.org/maplibre-gl-js/docs/examples/display-buildings-in-3d/).
+
+### 좌표 정합
+
+분석 범위는 [126.6925639, 37.4340681, 126.7218288, 37.4610653] (서·남·동·북)입니다. 24열 × 18행을 위도·경도로 균등 분할합니다. 행은 북쪽에서 남쪽, 열은 서쪽에서 동쪽 순서이며 인덱스는 y×24+x입니다. src/map-data.js가 열 격자·선택 셀·냉각 후보의 좌표 변환을 공통으로 담당합니다. tests/test_map.mjs는 432개 셀의 좌표 왕복, 경계와 범위 밖 처리, 후보점 위치를 검증합니다.
+
+## 이전 버전의 분석 기반
+
+아래는 유지한 위성자료·열환경 모델과 2.0에서 수정한 계산 규칙입니다. **2.0의 격자형 대표 건물 렌더러는 3.0의 실제 지도 렌더러로 교체되었습니다.**
 
 구월동의 열환경 연구를 지도 중심의 인터랙티브 3D 작업 공간으로 개선했습니다. [Seoul 3D Atlas](https://seoul-3d-atlas.synabreu.chatgpt.site/)의 도시 탐색·카메라·조명 구성에서 영감을 얻되, 이 저장소의 자료와 시뮬레이션을 사용해 별도로 구현했습니다. X 참고 링크는 https://x.com/synabreu/status/2096557555086725159 입니다. X 원문은 작업 환경에서 403으로 열리지 않아 직접 검증하지 못했습니다.
 
 ## 2.0에서 달라진 점
 
-- 로컬 Three.js 기반 3D 격자 도시, 궤도 회전·확대·이동, 2D 전환, 자동 회전, 전체 화면. WebGL을 사용할 수 없으면 기존 Canvas 경량 렌더러를 사용합니다.
+- 2.0에서는 Three.js 격자 모형을 제공했으며, 3.0에서 실제 지도 기반 MapLibre 렌더러로 교체했습니다.
 - 현재 / 재료 변경 / AI 재료·위치 최적화의 모의 지표면온도·열퍼텐셜·온도차를 동일 범례로 비교합니다.
 - 다년 위성 관측은 별도 그룹으로 구분하며, 시뮬레이션 시각이나 개입안에 따라 관측값을 변조하지 않습니다.
 - 24시간 재생, 클릭·키보드 셀 선택, 각 셀의 세 시나리오 온도 비교, CSV 결과 및 JSON 실험 조건 다운로드, 현재 설정 링크 복사.
@@ -15,13 +39,13 @@
 
 ### 자료 범위와 해석
 
-현재 자료는 구월동 주변 **24×18 직사각형 격자**입니다. 기존 데이터의 insideBoundary는 모든 셀에서 1이고, guwol-boundary.geojson은 bounding box입니다. 법정동 경계에 정확히 잘라낸 결과로 해석하면 안 됩니다. 3D 건물은 각 셀의 대표 건물과 집계 높이이며 개별 건물의 실제 footprint가 아닙니다. 높이는 강조 슬라이더로 조절합니다.
+현재 자료는 구월동 주변 **24×18 직사각형 격자**입니다. 기존 데이터의 insideBoundary는 모든 셀에서 1이고, guwol-boundary.geojson은 bounding box입니다. 법정동 경계에 정확히 잘라낸 결과로 해석하면 안 됩니다. 열 데이터는 분석 셀의 집계값입니다. 3.0 지도 건물은 별도의 실제 footprint와 지도 높이 정보를 사용하며, 실제 건물과 분석 셀을 경위도로 연결합니다.
 
 두 개입안은 변경 셀 수가 같지만 재료 조합은 다릅니다. 따라서 AI와 재료 변경의 차이는 순수 위치 효과가 아니라 **재료 종류와 위치를 함께 최적화한 효과**이며, 같은 비용의 정책 비교도 아닙니다. 고온노출은 실제 인구수가 아닌 활동량·취약성 대리변수 가중 지수입니다. 공간적으로 새로운 토지 구획·도로·건물을 설계하는 모델은 아닙니다.
 
 ### 소프트웨어와 출처
 
-Three.js 0.170.0과 OrbitControls는 MIT 라이선스로 src/vendor에 포함했습니다. 라이선스: src/vendor/THREE-LICENSE.txt. 렌더러 실행에 API 키나 외부 CDN 요청은 필요하지 않습니다. 데이터 출처는 아래 기존 연구 설명과 data/guwol-data.json에 보존했습니다. OpenStreetMap 기여자(ODbL), USGS Landsat Collection 2, Open-Meteo(CC BY 4.0)를 표기합니다.
+Three.js 0.170.0과 OrbitControls는 MIT 라이선스로 src/vendor에 포함했습니다. 라이선스: src/vendor/THREE-LICENSE.txt. 3.0의 지도 데이터는 OpenFreeMap 공개 서비스에 연결하며 API 키는 필요하지 않습니다. 데이터 출처는 아래 기존 연구 설명과 data/guwol-data.json에 보존했습니다. OpenStreetMap 기여자(ODbL), USGS Landsat Collection 2, Open-Meteo(CC BY 4.0)를 표기합니다.
 
 ---
 

@@ -5,8 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="다년 Landsat·OpenStreetMap·과거기상으로 분석한 인천 구월동 AI 열섬 저감 3D 시뮬레이터">
   <meta name="theme-color" content="#101315">
-  <title>GUWOL HEAT ATLAS · 구월동 3D 열환경 연구실</title>
+  <title>GUWOL HEAT ATLAS · 실제 지도 기반 3D 열환경 연구실</title>
   <link rel="stylesheet" href="src/styles.css">
+  <link rel="stylesheet" href="src/vendor/maplibre-gl.css">
   <link rel="stylesheet" href="src/atlas.css">
 </head>
 <body>
@@ -14,7 +15,7 @@
 <header class="atlas-header"><a class="brand" href="#main"><span class="brand-symbol">G<span>°</span></span><span>GUWOL <b>HEAT ATLAS</b><small>구월동 도시 열환경 연구실</small></span></a><nav aria-label="주요 메뉴"><a class="active" href="#main">도시 탐색</a><a href="#compare">시나리오 비교</a><a href="#observations">위성 기록</a></nav><a class="method-link" href="methodology.html">데이터와 방법론 ↗</a></header>
 
   <main id="main"><section class="atlas" aria-labelledby="spatial-title">
-  <div class="atlas-heading"><div><p class="eyebrow">INCHEON, SOUTH KOREA / 37.4474° N · 126.7063° E</p><h1 id="spatial-title">도시의 열을 읽다<span>구월동</span></h1></div><div class="atlas-status"><span class="research-badge">연구 · 교육용 모델</span><span id="status" role="status">도시를 준비하고 있습니다</span></div></div>
+  <div class="atlas-heading"><div><p class="eyebrow">INCHEON, SOUTH KOREA / 37.4474° N · 126.7063° E</p><h1 id="spatial-title">실제 지도로 읽는<span>구월동</span></h1></div><div class="atlas-status"><span class="research-badge">연구 · 교육용 모델</span><span id="status" role="status">도시를 준비하고 있습니다</span></div></div>
   <div class="atlas-workspace">
     <aside class="explorer" aria-label="지도 탐색 설정"><div class="panel-caption"><span>탐색 설정</span><span>01 / EXPLORE</span></div>
       <label class="field-label" for="metric-3d">어떤 열을 볼까요?</label><select id="metric-3d"><optgroup label="시뮬레이션 · 선택한 시각"><option value="temperature" selected>모의 지표면온도</option><option value="delta">현재 대비 온도 변화</option><option value="potential">열퍼텐셜</option></optgroup><optgroup label="위성 관측 · 시나리오 공통"><option value="frequency">반복 고온 빈도</option><option value="mean">다년 평균 LST</option><option value="p90">다년 고온 P90</option><option value="trend">상대 열추세</option><option value="ndvi">중앙 NDVI</option><option value="scene">개별 위성 장면 LST</option></optgroup></select>
@@ -22,13 +23,13 @@
       <label class="field-label" for="scenario-3d">도시 시나리오</label><select id="scenario-3d"><option value="baseline" selected>01 · 현재 구월동</option><option value="material">02 · 재료 물성 변경</option><option value="optimized">03 · AI 재료·위치 최적화</option></select>
       <p class="help-text">동일 기상·형상·변경 셀 수에서 비교합니다. AI는 재료 종류와 위치를 함께 선택합니다.</p>
       <label class="field-label" for="scene-date-3d">위성 촬영일</label><select id="scene-date-3d"></select>
-      <label class="field-label" for="exaggeration-3d">건물 높이 강조 <output id="exaggeration-output">1.6×</output></label><input id="exaggeration-3d" type="range" min="0.6" max="3" value="1.6" step="0.1">
+      <label class="field-label" for="exaggeration-3d">건물 높이 배율 <output id="exaggeration-output">1.0×</output></label><input id="exaggeration-3d" type="range" min="0.6" max="3" value="1.0" step="0.1">
       <div class="scene-buttons"><button id="rotate-left" class="icon-button" aria-label="왼쪽으로 회전">↺</button><button id="reset-view" class="icon-button">전체 보기</button><button id="rotate-right" class="icon-button" aria-label="오른쪽으로 회전">↻</button></div>
-      <div class="explorer-foot"><strong>데이터로 만든 작은 도시</strong><p>24 × 18 직사각형 분석 격자<br>OSM 집계 건물 · 약 108 × 167 m / 셀</p><a href="#experiment-title">실험 조건 조정 ↓</a></div>
+      <div class="explorer-foot"><strong>실제 지도 위의 열 분석</strong><p>OSM 건물 윤곽 · 도로 · 공원<br>열 자료: 약 108 × 167 m / 셀</p><a href="#experiment-title">실험 조건 조정 ↓</a></div>
     </aside>
-    <div class="map-stage" id="map-stage"><div class="canvas-3d-shell"><canvas id="city-3d" tabindex="0" aria-label="구월동 3D 분석 격자. 드래그 회전, 휠 확대"></canvas></div><div class="map-corner"><span class="map-kicker">GUWOL / URBAN FIELD</span><span>도시 형상 × 열 분포</span></div><div class="map-coordinate">N ↑<small>구월1–4동 생활권</small></div><div class="map-instructions">드래그 회전 · 휠 확대 · 건물에 포인터를 올려 상세 보기</div></div>
-  </div><p id="detail-3d" class="cell-detail" aria-live="polite">도시의 셀을 가리키면 재료·건물 높이·열지표를 확인할 수 있습니다.</p>
-  <div class="atlas-footnote"><span><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · Landsat 8/9 · Open-Meteo</span><span>격자로 집계한 해석 모형 · 지표면온도 ≠ 대기온도</span></div>
+    <div class="map-stage" id="map-stage"><div class="canvas-3d-shell"><canvas id="city-3d" tabindex="0" aria-label="실제 구월동 지도"></canvas></div><div class="map-corner"><span class="map-kicker">GUWOL / URBAN FIELD</span><span>도시 형상 × 열 분포</span></div><div class="map-coordinate">N ↑<small>구월1–4동 생활권</small></div><div class="map-instructions">드래그 이동 · 오른쪽 드래그 회전 · 휠 확대 · 건물 클릭</div></div>
+  </div><p id="detail-3d" class="cell-detail" aria-live="polite">실제 건물이나 지도를 클릭하면 연결된 분석 셀의 열지표를 확인할 수 있습니다.</p>
+  <div class="atlas-footnote"><span><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://openfreemap.org/">OpenFreeMap</a> · Landsat 8/9 · Open-Meteo</span><span>실제 건물 윤곽 · 일부 높이 추정 · 열 자료는 분석 격자값</span></div>
 </section>
     <section class="control-band" aria-labelledby="experiment-title">
       <div class="section-heading">
@@ -227,7 +228,7 @@
   </main>
 
   <footer>
-    <p>Urban Heat Potential Lab · 연구·교육용 오픈소스 · GUWOL HEAT ATLAS 2.0</p>
+    <p>Urban Heat Potential Lab · 연구·교육용 오픈소스 · GUWOL HEAT ATLAS 3.0</p>
     <nav aria-label="프로젝트 문서"><a href="README.md">README</a><a href="methodology.html">방법론</a><a href="LICENSE">MIT License</a></nav>
   </footer>
 
