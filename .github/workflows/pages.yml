@@ -1,4 +1,4 @@
-name: Deploy static simulator to GitHub Pages
+name: Deploy observation atlas to GitHub Pages
 
 on:
   push:
