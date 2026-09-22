@@ -23,7 +23,8 @@
     </aside>
     <section class="map-panel" aria-label="현재 화면 위성 관측 지도"><div id="map"></div>
       <div class="map-title"><span class="location-dot"></span> 현재 화면 자동 분석</div>
-      <div class="view-controls" role="group" aria-label="지도 시점"><button id="view3d" aria-pressed="true">3D</button><button id="view2d" aria-pressed="false">2D</button><button id="home" aria-label="처음 위치로" title="처음 위치로">⌂</button></div>
+      <div id="building-status" class="building-status" role="status">등록 높이 자동 조회</div>
+      <div class="view-controls" role="group" aria-label="지도 시점"><button id="view3d" aria-pressed="true">3D</button><button id="view2d" aria-pressed="false">2D</button><button id="home" aria-label="처음 위치로" title="처음 위치로">⌂</button><button id="fullscreen" aria-label="전체 화면" title="전체 화면" aria-pressed="false">⛶</button></div>
       <div id="map-status" class="map-status" role="status">실제 지도를 불러오고 있습니다…</div>
       <div class="legend" id="legend"><div><strong>지표면 온도</strong><span>°C</span></div><div class="gradient"></div><div class="legend-ticks"><span>≤24</span><span>30</span><span>36</span><span>42</span><span>≥50</span></div></div>
       <div class="map-hint">드래그 이동 · 휠 확대 · 우클릭 회전</div>

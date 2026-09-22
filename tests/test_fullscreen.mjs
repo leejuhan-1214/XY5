@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {setupFullscreen} from '../src/fullscreen.js';
+const listeners=new Map(),attrs=new Map(),classes=new Set();let resized=0;
+const button={setAttribute:(k,v)=>attrs.set(k,v)};
+const doc={fullscreenEnabled:false,fullscreenElement:null,documentElement:{},body:{classList:{toggle:(name,value)=>value?classes.add(name):classes.delete(name)}},addEventListener:(name,fn)=>listeners.set(name,fn),removeEventListener:name=>listeners.delete(name)};
+const stop=setupFullscreen(button,()=>resized++,doc);
+await button.onclick();assert.equal(attrs.get('aria-pressed'),'true');assert.ok(classes.has('map-expanded'));
+listeners.get('keydown')({key:'Escape'});assert.equal(attrs.get('aria-pressed'),'false');assert.ok(!classes.has('map-expanded'));
+await button.onclick();await button.onclick();assert.equal(attrs.get('aria-pressed'),'false');
+doc.fullscreenEnabled=true;
+doc.documentElement.requestFullscreen=async()=>{doc.fullscreenElement=doc.documentElement;listeners.get('fullscreenchange')();};
+doc.exitFullscreen=async()=>{doc.fullscreenElement=null;listeners.get('fullscreenchange')();};
+await button.onclick();assert.equal(attrs.get('aria-label'),'전체 화면 종료');assert.ok(!classes.has('map-expanded'));
+await button.onclick();assert.equal(attrs.get('aria-label'),'전체 화면');assert.ok(resized>4);
+stop();assert.equal(listeners.size,0);
+console.log('Fullscreen: native enter/exit, embedded fallback, Escape and resize synchronization verified.');

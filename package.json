@@ -1,12 +1,12 @@
 {
   "name": "urban-heat-potential-lab",
-  "version": "5.0.0",
+  "version": "6.0.0",
   "private": true,
   "type": "module",
   "description": "Guwol actual-map atlas with traceable Landsat observations and explicit OSM building heights",
   "scripts": {
     "start": "npx serve .",
-    "test": "node tests/test_engine.mjs && node tests/test_guwol.mjs && node tests/test_history.mjs && node tests/test_scenarios.mjs && node tests/test_atlas.mjs && node tests/test_map.mjs && node tests/test_observed.mjs && node tests/test_viewport.mjs"
+    "test": "node tests/test_engine.mjs && node tests/test_guwol.mjs && node tests/test_history.mjs && node tests/test_scenarios.mjs && node tests/test_atlas.mjs && node tests/test_map.mjs && node tests/test_observed.mjs && node tests/test_viewport.mjs && node tests/test_live_buildings.mjs && node tests/test_fullscreen.mjs"
   },
   "license": "MIT",
   "engines": {
