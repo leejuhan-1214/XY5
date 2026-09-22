@@ -4,11 +4,14 @@ export function parseHeight(raw) {
   const value = Number.parseFloat(raw);
   return value > 0 ? value : null;
 }
+export const mercatorY=lat=>Math.log(Math.tan(Math.PI/4+lat*Math.PI/360));
+export const inverseMercatorY=y=>(2*Math.atan(Math.exp(y))-Math.PI/2)*180/Math.PI;
 export function observationAt(data, scene, lng, lat) {
   const [w,s,e,n] = data.bbox;
   if (![lng,lat].every(Number.isFinite) || lng<w || lng>e || lat<s || lat>n) return {index:null,value:null};
   const x=Math.min(data.width-1,Math.floor((lng-w)/(e-w)*data.width));
-  const y=Math.min(data.height-1,Math.floor((n-lat)/(n-s)*data.height));
+  const fraction=data.projection==='mercator'?(mercatorY(n)-mercatorY(lat))/(mercatorY(n)-mercatorY(s)):(n-lat)/(n-s);
+  const y=Math.min(data.height-1,Math.floor(fraction*data.height));
   const index=y*data.width+x;
   return {index,value:Number.isFinite(scene.values[index])?scene.values[index]:null};
 }
