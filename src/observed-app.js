@@ -3,24 +3,90 @@ import {footprintPoint} from './footprint.js';
 import {frameFor,loadViewport,pixelLocation} from './viewport-data.js';
 import {setupFullscreen} from './fullscreen.js';
 import {emptyBuildings,buildingBounds,fetchBuildings} from './live-buildings.js';
+import {MATERIAL} from './materials.js';
+import {MATERIAL_CHOICES,materialEnergy,circleAt} from './material-scenario.js';
 const $=id=>document.getElementById(id),dialog=$('sources');
 $('sources-open').onclick=()=>dialog.showModal();$('sources-close').onclick=()=>dialog.close();
 dialog.addEventListener('click',e=>{if(e.target===dialog){const r=dialog.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)dialog.close();}});
 const celsius=v=>Number.isFinite(v)?`${v.toFixed(1)}°C`:'자료 없음';
 const camera={center:[126.7065,37.4479],zoom:15.35,pitch:55,bearing:-24};
 const readJSON=async url=>{const r=await fetch(url,{signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error(`${url}: ${r.status}`);return r.json();};
-let map,data=null,selected,marker,ready=false,controller,timer,revision=0;
+let map,data=null,selected,marker,ready=false,controller,timer,revision=0,materialMode=false,materialTarget=null,materialKind='ground',materialCleared=false;
 function setPanel(open){
   document.body.classList.toggle('panel-collapsed',!open);
   $('panel-toggle').setAttribute('aria-expanded',String(open));
-  $('rail-observe').classList.toggle('active',open);
+  $('rail-observe').classList.toggle('active',open&&!materialMode);
+  $('rail-material').classList.toggle('active',open&&materialMode);
+}
+function setMaterialMode(active){
+  materialMode=active;
+  document.body.classList.toggle('materials-mode',active);
+  $('material-toggle').setAttribute('aria-pressed',String(active));
+  $('rail-material').setAttribute('aria-pressed',String(active));
+  $('panel-toggle').querySelector('span').textContent=active?'재료 패널':'관측 패널';
+  if(active&&selected&&!materialCleared)placeMaterial(selected);
+  if(ready)for(const id of ['material-ground','material-roof','material-boundary'])map.setLayoutProperty(id,'visibility',active?'visible':'none');
+  setPanel(true);
 }
 $('panel-toggle').onclick=()=>setPanel(document.body.classList.contains('panel-collapsed'));
 $('panel-close').onclick=()=>setPanel(false);
 $('compact-open').onclick=()=>setPanel(true);
-$('rail-observe').onclick=()=>setPanel(document.body.classList.contains('panel-collapsed'));
+$('material-close').onclick=()=>setPanel(false);
+$('rail-observe').onclick=()=>setMaterialMode(false);
+$('material-toggle').onclick=()=>setMaterialMode(!materialMode);
+$('rail-material').onclick=()=>setMaterialMode(true);
+$('material-from-observation').onclick=()=>setMaterialMode(true);
 $('rail-sources').onclick=()=>$('sources-open').click();
 $('rail-view').onclick=()=>$(map?.getPitch()>5?'view2d':'view3d').click();
+function setMaterialChoices(kind){
+  if(materialKind===kind&&$('material-base').options.length)return;
+  materialKind=kind;
+  for(const [id,items] of [['material-base',MATERIAL_CHOICES[kind]],['material-next',MATERIAL_CHOICES[kind]]]){
+    $(id).replaceChildren(...items.map(m=>new Option(m.name,m.key)));
+  }
+  $('material-base').value=kind==='roof'?'blackRoof':'asphalt';
+  $('material-next').value=kind==='roof'?'whitePaint':'coolPave';
+  $('material-radius').closest('.material-radius').hidden=kind==='roof';
+}
+function materialObservation(){
+  if(!materialTarget){$('material-observed').textContent='위치를 선택해 주세요';return;}
+  const hit=data?observationAt(data,data,materialTarget.lng,materialTarget.lat):{value:null,index:null};
+  const origin=hit.index!==null?data?.sources[data.origins[hit.index]]:null;
+  $('material-observed').textContent=Number.isFinite(hit.value)?`${celsius(hit.value)} · ${origin?.datetime.slice(0,10)||'촬영일 확인 중'}`:'자료 없음';
+}
+function materialPatch(){
+  const source=ready&&map.getSource('material-placement');
+  if(!source)return;
+  const material=MATERIAL[$('material-next').value];
+  const geometry=materialTarget?.feature?.geometry|| (materialTarget?circleAt([materialTarget.lng,materialTarget.lat],+$('material-radius').value):null);
+  const roofHeight=materialTarget?.building?.height||0;
+  source.setData({type:'FeatureCollection',features:geometry?[{type:'Feature',properties:{surface:materialKind,color:material.color,height:roofHeight+0.4,base:roofHeight},geometry}]:[]});
+}
+function updateMaterial(){
+  const base=MATERIAL[$('material-base').value],next=MATERIAL[$('material-next').value];
+  if(!materialTarget||!base||!next){$('material-change').textContent='—';$('material-before').textContent='—';$('material-after').textContent='—';}
+  else{
+    const result=materialEnergy(base,next),change=Math.round(result.change);
+    $('material-change').textContent=`${change>0?'+':''}${change} W/m²`;
+    $('material-change').classList.toggle('cooler',change<0);
+    $('material-change').classList.toggle('warmer',change>0);
+    $('material-before').textContent=`${Math.round(result.before)} W/m²`;
+    $('material-after').textContent=`${Math.round(result.after)} W/m²`;
+  }
+  materialObservation();materialPatch();
+}
+function placeMaterial(point){
+  materialTarget=point;materialCleared=false;
+  setMaterialChoices(point.building?'roof':'ground');
+  $('material-place').textContent=point.building?.name||(point.building?'선택한 건물 지붕':'선택한 지면');
+  $('material-kind').textContent=point.building?'등록 높이 건물의 지붕 형상에 적용':'선택 위치 주위 원형 면적에 적용';
+  updateMaterial();
+}
+$('material-base').onchange=updateMaterial;
+$('material-next').onchange=updateMaterial;
+$('material-radius').oninput=()=>{$('material-radius-value').textContent=`${$('material-radius').value} m`;materialPatch();};
+$('material-reset').onclick=()=>{materialTarget=null;materialCleared=true;$('material-place').textContent='지도를 눌러 위치 선택';$('material-kind').textContent='한 번에 한 위치 · 다시 누르면 변경';updateMaterial();};
+setMaterialChoices('ground');updateMaterial();
 const cache=new Map();
 let buildings=emptyBuildings(),buildingController,buildingTimer,buildingRevision=0,lastBuildingRequest=0;
 const buildingCache=new Map();
@@ -61,7 +127,7 @@ function imageURL(){
   ctx.putImageData(pixels,0,0);return canvas.toDataURL();
 }
 function updateSelection(){
-  if(!selected)return;
+  if(!selected){materialObservation();return;}
   const {lng,lat,building}=selected;
   const hit=data?observationAt(data,data,lng,lat):{value:null,index:null};
   const origin=hit.index!==null?data?.sources[data.origins[hit.index]]:null;
@@ -73,13 +139,14 @@ function updateSelection(){
   $('height').textContent=building?(Number.isFinite(building.height)?`${building.height} m`:'높이 미등록'):'등록 자료 없음';
   $('coordinates').textContent=`${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   $('building-source').hidden=!building;if(building)$('building-source').href=building.sourceURL;
+  materialObservation();
 }
 function clearAnalysis(){
   revision++;controller?.abort();clearTimeout(timer);data=null;
   if(ready)map.setPaintProperty('temperature','raster-opacity',0);
   $('mean').textContent='—';$('compact-mean').textContent='—';$('range').textContent='—';$('acquisition').textContent='현재 화면 기준으로 자동 검색';$('compact-date').textContent='실제 촬영 자료 검색 중';
   $('coverage').textContent='지도 이동 후 자동 분석';$('scene-source').removeAttribute('href');$('scene-source').textContent='촬영 자료 검색 대기';$('used-scenes').replaceChildren();
-  updateSelection();
+  updateSelection();materialObservation();
 }
 function setSources(){
   const dates=[...new Set(data.sources.map(s=>s.datetime.slice(0,10)))].sort();
@@ -113,7 +180,7 @@ async function refresh(){
     const stats=visibleStats(),percent=stats.total?Math.floor(stats.count/stats.total*1000)/10:0;
     $('mean').textContent=celsius(stats.mean);$('compact-mean').textContent=$('mean').textContent;$('range').textContent=stats.count?`${stats.min.toFixed(1)} — ${stats.max.toFixed(1)}°C`:'자료 없음';
     $('coverage').textContent=`현재 화면 · 유효 관측 ${percent}% · ${data.sources.length}개 촬영 장면`;
-    setSources();updateSelection();
+    setSources();updateSelection();materialObservation();
     status(stats.count?'':'이 화면에서 유효한 관측을 찾지 못했습니다. 기준일을 바꾸거나 이동해 주세요.');
   }catch(err){if(signal.aborted||current!==revision)return;console.error(err);$('coverage').textContent='현재 화면 분석 실패';status(err.message||'위성 자료 연결 실패',true);}
 }
@@ -143,13 +210,19 @@ async function init(){
     map.addSource('recorded-buildings',{type:'geojson',data:buildings});
     map.addLayer({id:'building-footprints',type:'fill',source:'recorded-buildings',paint:{'fill-color':'#9bb9ae','fill-opacity':0.28,'fill-outline-color':'#789f91'}},firstLabel);
     map.addLayer({id:'recorded-heights',type:'fill-extrusion',source:'recorded-buildings',minzoom:13,filter:['>', ['coalesce',['get','height'],0],0],paint:{'fill-extrusion-height':['get','height'],'fill-extrusion-base':['get','base'],'fill-extrusion-color':'#e7ccb0','fill-extrusion-opacity':0.92,'fill-extrusion-vertical-gradient':true}},firstLabel);
+    map.addSource('material-placement',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addLayer({id:'material-ground',type:'fill',source:'material-placement',filter:['==',['get','surface'],'ground'],paint:{'fill-color':['get','color'],'fill-opacity':0.72}},firstLabel);
+    map.addLayer({id:'material-roof',type:'fill-extrusion',source:'material-placement',filter:['==',['get','surface'],'roof'],paint:{'fill-extrusion-height':['get','height'],'fill-extrusion-base':['get','base'],'fill-extrusion-color':['get','color'],'fill-extrusion-opacity':0.94}},firstLabel);
+    map.addLayer({id:'material-boundary',type:'line',source:'material-placement',filter:['==',['get','surface'],'ground'],paint:{'line-color':'#137b59','line-width':3,'line-dasharray':[2,1]}},firstLabel);
+    if(!materialMode)for(const id of ['material-ground','material-roof','material-boundary'])map.setLayoutProperty(id,'visibility','none');
     map.setLight({anchor:'viewport',position:[1.5,210,40],color:'#fff8e9',intensity:0.4});ready=true;
+    materialPatch();
     map.on('movestart',()=>{clearAnalysis();status('지도 이동 중 · 멈추면 현재 화면을 분석합니다.');});map.on('moveend',schedule);map.on('resize',()=>{clearAnalysis();schedule();});
     map.on('movestart',()=>{cancelBuildings();buildingStatus('이동 후 등록 높이 자동 조회');});map.on('moveend',scheduleBuildings);map.on('resize',scheduleBuildings);
     map.on('click',event=>{
       const hit=map.queryRenderedFeatures(event.point,{layers:['recorded-heights','building-footprints']})[0];
       const original=hit&&buildings.features.find(f=>f.properties.osmId===hit.properties.osmId&&f.properties.osmType===hit.properties.osmType),point=original?footprintPoint(original.geometry):[event.lngLat.lng,event.lngLat.lat];
-      selected={lng:point[0],lat:point[1],building:original?.properties};marker?.remove();marker=new globalThis.maplibregl.Marker({color:'#174c42',scale:0.65}).setLngLat(point).addTo(map);updateSelection();
+      selected={lng:point[0],lat:point[1],building:original?.properties,feature:original};materialCleared=false;marker?.remove();marker=new globalThis.maplibregl.Marker({color:'#174c42',scale:0.65}).setLngLat(point).addTo(map);updateSelection();if(materialMode)placeMaterial(selected);
     });
     map.on('mousemove',event=>{map.getCanvas().style.cursor=map.queryRenderedFeatures(event.point,{layers:['recorded-heights','building-footprints']}).length?'pointer':'';});
     refresh();scheduleBuildings();
