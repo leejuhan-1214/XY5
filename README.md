@@ -6,7 +6,9 @@
 
 분석 기준일은 방문자의 **오늘 날짜**로 시작합니다. 사용자는 날짜 입력으로 과거 기준일을 선택할 수 있습니다. 기준일 ±32일의 실제 Landsat 촬영 자료만 검색하므로, 오늘을 선택해도 표시되는 온도는 실시간 온도가 아닙니다. 관측 패널과 닫힌 패널 요약 카드에 실제 촬영일을 따로 표시하며, 최근 유효 자료가 없으면 자료 없음으로 남깁니다. 닫힌 패널에서도 현재 화면 평균과 지도를 누른 위치의 온도를 볼 수 있습니다.
 
-상단의 **재료 실험** 또는 왼쪽 **재료** 메뉴는 [구월동 재료 변경 시뮬레이션](simulator.html#scenario=material)을 엽니다. 이 화면은 이전 연구·교육용 모델을 복원한 것이며 구월동 고정 범위의 계산값입니다. 현재 화면의 위성 관측 온도와 합치거나 실제 측정 변화량으로 해석하지 않습니다.
+상단이나 왼쪽의 **재료** 버튼은 **현재 지도 안에서** 재료 변경 패널을 엽니다. 지면의 한 위치 또는 OSM에 높이가 등록된 건물을 누르고, 현재 재료 가정과 교체 재료를 고르면 같은 지도에 적용 범위가 표시됩니다. 지면은 반경 10–100m의 시험 면적, 건물은 실제 OSM 형상을 사용합니다. 구월동에 한정되지 않으며 지도 위치와 위성 분석 기준일은 유지됩니다.
+
+OSM에는 실제 지붕·포장 재료가 등록되어 있지 않아 **현재 재료는 사용자가 정하는 가정**입니다. 패널의 변화량은 맑은 낮 일사 800 W/m²와 수분 40%를 가정한 `[(1−α) × 일사 − 증발 잠재량 × 수분]`의 전후 차이(W/m²)입니다. 반사율·증발 항만 비교한 단순 에너지수지 민감도이며 **온도 예측이나 현장 냉각 효과가 아닙니다**. 위성 관측 온도와 촬영일은 별도로 표시하고 재료 변경 시에도 원래 관측값을 바꾸지 않습니다. 과거 [구월동 모델](simulator.html)은 독립된 기록으로 남겨 두었습니다.
 
 ## 화면에 따라 바뀌는 관측자료
 
@@ -38,7 +40,7 @@
 - [OpenFreeMap](https://openfreemap.org/) · [© OpenStreetMap contributors / ODbL](https://www.openstreetmap.org/copyright)
 - [Overpass API 및 공개 조회 서버](https://wiki.openstreetmap.org/wiki/Overpass_API)
 
-현재 관측 지도 진입점은 `index.html` → `src/observed-app.js`이며 `src/viewport-data.js`가 화면 범위, NPY 원자료 해석, QA, 날짜별 관측 연결을 담당합니다. `src/live-buildings.js`는 전 지역 등록 높이 조회, `src/fullscreen.js`는 전체 화면을 담당합니다. `simulator.html`은 보존된 구월동 시뮬레이션 코드(`src/app.js`)를 별도로 사용합니다. GitHub Pages에서 브라우저가 공개 CORS API를 직접 호출하며 API 키나 서버는 필요하지 않습니다. 지도·건물·위성 API에는 인터넷 연결이 필요합니다.
+현재 관측 지도 진입점은 `index.html` → `src/observed-app.js`이며 `src/viewport-data.js`가 화면 범위, NPY 원자료 해석, QA, 날짜별 관측 연결을 담당합니다. `src/live-buildings.js`는 전 지역 등록 높이 조회, `src/material-scenario.js`는 현재 지도 위의 재료 민감도 계산, `src/fullscreen.js`는 전체 화면을 담당합니다. `simulator.html`은 보존된 구월동 시뮬레이션 코드(`src/app.js`)를 별도로 사용합니다. GitHub Pages에서 브라우저가 공개 CORS API를 직접 호출하며 API 키나 서버는 필요하지 않습니다. 지도·건물·위성 API에는 인터넷 연결이 필요합니다.
 
 `data/observations.json`과 `scripts/build_observations.py`는 v4에서 재현 가능한 고정 범위 자료를 보관한 기록이며 **현재 화면의 온도 소스로 사용하지 않습니다**. 이전 시뮬레이션 모듈도 현재 앱이 불러오지 않습니다. `data/buildings.geojson`도 이전 버전의 기록으로만 보존하며 현재 3D 레이어가 불러오지 않습니다.
 

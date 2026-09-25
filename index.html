@@ -5,10 +5,10 @@
   <title>HEAT:XY5 — 위성 온도 지도</title>
   <link rel="stylesheet" href="./src/vendor/maplibre-gl.css"><link rel="stylesheet" href="./src/observed.css"><link rel="stylesheet" href="./src/observed-console.css">
 </head><body>
-  <header class="header"><div class="brand"><span class="brand-icon" aria-hidden="true">✳</span><div><h1>HEAT<span>:XY5</span></h1><p>URBAN HEAT OBSERVATION</p></div></div><div class="header-actions"><span class="data-badge"><i></i> LANDSAT 8/9 · 지표면 온도</span><a class="header-button material-header" href="./simulator.html#scenario=material" aria-label="구월동 재료 변경 시뮬레이션 열기">◧ <span>재료</span></a><button id="panel-toggle" class="header-button" aria-label="관측 패널 열기 또는 닫기" aria-expanded="true">▤ <span>관측 패널</span></button><button id="sources-open" class="header-button">ⓘ <span>자료 출처</span></button></div></header>
+  <header class="header"><div class="brand"><span class="brand-icon" aria-hidden="true">✳</span><div><h1>HEAT<span>:XY5</span></h1><p>URBAN HEAT OBSERVATION</p></div></div><div class="header-actions"><span class="data-badge"><i></i> LANDSAT 8/9 · 지표면 온도</span><button id="material-toggle" class="header-button material-header" type="button" aria-label="현재 지도에서 재료 변경 실험" aria-pressed="false">◧ <span>재료</span></button><button id="panel-toggle" class="header-button" aria-label="관측 패널 열기 또는 닫기" aria-expanded="true">▤ <span>관측 패널</span></button><button id="sources-open" class="header-button">ⓘ <span>자료 출처</span></button></div></header>
   <main class="workspace">
-    <nav class="console-rail" aria-label="관측 도구"><button id="rail-observe" class="rail-button active" aria-label="관측 패널 열기 또는 닫기" title="관측 패널"><span aria-hidden="true">▤</span><small>관측</small></button><a class="rail-button" href="./simulator.html#scenario=material" aria-label="구월동 재료 변경 시뮬레이션 열기" title="재료 변경 시뮬레이션"><span aria-hidden="true">◧</span><small>재료</small></a><button id="rail-view" class="rail-button" aria-label="3D 보기 전환" title="3D 보기 전환" aria-pressed="true"><span aria-hidden="true">◇</span><small>3D</small></button><button id="rail-sources" class="rail-button" aria-label="자료 출처 열기" title="자료 출처"><span aria-hidden="true">ⓘ</span><small>출처</small></button></nav>
-    <aside class="sidebar" aria-label="관측 정보">
+    <nav class="console-rail" aria-label="관측 도구"><button id="rail-observe" class="rail-button active" aria-label="관측 패널 열기 또는 닫기" title="관측 패널"><span aria-hidden="true">▤</span><small>관측</small></button><button id="rail-material" class="rail-button" type="button" aria-label="현재 지도에서 재료 변경 실험" title="재료 변경 실험" aria-pressed="false"><span aria-hidden="true">◧</span><small>재료</small></button><button id="rail-view" class="rail-button" aria-label="3D 보기 전환" title="3D 보기 전환" aria-pressed="true"><span aria-hidden="true">◇</span><small>3D</small></button><button id="rail-sources" class="rail-button" aria-label="자료 출처 열기" title="자료 출처"><span aria-hidden="true">ⓘ</span><small>출처</small></button></nav>
+    <aside class="sidebar observation-sidebar" aria-label="관측 정보">
       <div class="panel-heading"><span class="panel-kicker"><i></i> OBSERVATION / 관측 패널</span><button id="panel-close" type="button" aria-label="관측 패널 닫기">−</button></div>
       <section class="controls">
         <div class="date-control"><label for="scene">분석 기준일 <span>±32일 검색</span></label><input id="scene" type="date" min="2013-01-01" disabled><p id="acquisition" class="muted">오늘 기준으로 실제 촬영 자료 검색</p></div>
@@ -22,11 +22,26 @@
         <a id="building-source" class="inline-link" target="_blank" rel="noopener" hidden>OSM 건물 원자료 ↗</a>
       </section>
       <div class="sidebar-note"><span class="note-mark">i</span><p>높이가 등록된 건물만 3D로 표시합니다. 온도는 약 100m 열적 해상도의 위성 자료로, 개별 건물 측정값이 아닙니다.</p></div>
-      <a class="material-link" href="./simulator.html#scenario=material"><strong>재료 변경 시뮬레이션 ↗</strong><span>구월동 고정 범위 · 계산값, 위성 관측값 아님</span></a>
+      <button id="material-from-observation" class="material-link" type="button"><strong>현재 지도에서 재료 바꾸기 →</strong><span>선택한 지역에 재료를 놓고 모의 변화 확인</span></button>
+    </aside>
+    <aside class="sidebar material-sidebar" aria-label="재료 변경 실험">
+      <div class="panel-heading"><span class="panel-kicker"><i></i> MATERIAL / 재료 변경 실험</span><button id="material-close" type="button" aria-label="재료 패널 닫기">−</button></div>
+      <p class="material-intro">현재 지도에서 위치를 눌러 재료를 바꿔 보세요. 위성 관측 온도는 그대로 유지됩니다.</p>
+      <div class="material-target"><span>적용 위치</span><strong id="material-place">지도를 눌러 위치 선택</strong><small id="material-kind">한 번에 한 위치 · 다시 누르면 변경</small></div>
+      <div class="material-fields">
+        <label for="material-base">현재 재료 <small>실제 재료 미등록 · 직접 가정</small></label><select id="material-base"></select>
+        <label for="material-next">변경할 재료</label><select id="material-next"></select>
+      </div>
+      <div class="material-radius"><label for="material-radius">적용 반경 <strong id="material-radius-value">25 m</strong></label><input id="material-radius" type="range" min="10" max="100" step="5" value="25"><small>지면 선택 시 지도에 표시되는 시험 면적</small></div>
+      <div class="material-results" aria-live="polite"><span>모의 표면 에너지 유입 변화</span><strong id="material-change">—</strong><div><span>현재 재료 가정 <b id="material-before">—</b></span><span>변경 후 <b id="material-after">—</b></span></div></div>
+      <div class="material-observation">선택 지점 위성 관측 <strong id="material-observed">—</strong></div>
+      <p class="material-disclaimer">맑은 낮 일사 800 W/m²·수분 40% 가정. 반사율과 증발 잠재량만 비교한 계산값이며 온도 예측이나 실제 냉각 효과가 아닙니다.</p>
+      <button id="material-reset" class="material-reset" type="button">적용 위치 지우기</button>
     </aside>
     <section class="map-panel" aria-label="현재 화면 위성 관측 지도"><div id="map"></div>
       <div class="collapsed-observation" aria-live="polite"><span>현재 화면 위성 관측 평균</span><strong id="compact-mean">—</strong><small id="compact-date">실제 촬영 자료 검색 중</small><div class="compact-selection"><span id="compact-place">지도를 눌러 위치 확인</span><b id="compact-temperature">—</b></div><button id="compact-open" type="button">관측 패널 열기</button></div>
       <div class="map-title"><span class="location-dot"></span><span>SURFACE TEMPERATURE <b>현재 화면 자동 분석</b></span></div>
+      <div class="material-map-label">◧ 선택한 면적의 재료 변경 실험 <small>색상은 재료 종류 · 온도 예측 아님</small></div>
       <div id="building-status" class="building-status" role="status">등록 높이 자동 조회</div>
       <div class="view-controls" role="group" aria-label="지도 시점"><button id="view3d" aria-pressed="true">3D</button><button id="view2d" aria-pressed="false">2D</button><button id="zoom-in" aria-label="확대" title="확대">+</button><button id="zoom-out" aria-label="축소" title="축소">−</button><button id="home" aria-label="처음 위치로" title="처음 위치로">⌂</button><button id="fullscreen" aria-label="전체 화면" title="전체 화면" aria-pressed="false">⛶</button></div>
       <div id="map-status" class="map-status" role="status">실제 지도를 불러오고 있습니다…</div>
