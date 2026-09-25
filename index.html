@@ -1,17 +1,17 @@
 <!doctype html>
 <html lang="ko"><head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b1017"><meta name="description" content="지도를 이동하면 현재 화면의 실제 Landsat 지표면 온도를 자동 분석합니다.">
+  <meta name="theme-color" content="#f5f7f4"><meta name="description" content="지도를 이동하면 현재 화면의 실제 Landsat 지표면 온도를 자동 분석합니다.">
   <title>HEAT:XY5 — 위성 온도 지도</title>
   <link rel="stylesheet" href="./src/vendor/maplibre-gl.css"><link rel="stylesheet" href="./src/observed.css"><link rel="stylesheet" href="./src/observed-console.css">
 </head><body>
-  <header class="header"><div class="brand"><span class="brand-icon" aria-hidden="true">✳</span><div><h1>HEAT<span>:XY5</span></h1><p>URBAN HEAT OBSERVATION</p></div></div><div class="header-actions"><span class="data-badge"><i></i> LANDSAT 8/9 · 지표면 온도</span><button id="panel-toggle" class="header-button" aria-label="관측 패널 열기 또는 닫기" aria-expanded="true">▤ <span>관측 패널</span></button><button id="sources-open" class="header-button">ⓘ <span>자료 출처</span></button></div></header>
+  <header class="header"><div class="brand"><span class="brand-icon" aria-hidden="true">✳</span><div><h1>HEAT<span>:XY5</span></h1><p>URBAN HEAT OBSERVATION</p></div></div><div class="header-actions"><span class="data-badge"><i></i> LANDSAT 8/9 · 지표면 온도</span><a class="header-button material-header" href="./simulator.html#scenario=material" aria-label="구월동 재료 변경 시뮬레이션 열기">◧ <span>재료</span></a><button id="panel-toggle" class="header-button" aria-label="관측 패널 열기 또는 닫기" aria-expanded="true">▤ <span>관측 패널</span></button><button id="sources-open" class="header-button">ⓘ <span>자료 출처</span></button></div></header>
   <main class="workspace">
-    <nav class="console-rail" aria-label="관측 도구"><button id="rail-observe" class="rail-button active" aria-label="관측 패널 열기 또는 닫기" title="관측 패널"><span aria-hidden="true">▤</span><small>관측</small></button><button id="rail-view" class="rail-button" aria-label="3D 보기 전환" title="3D 보기 전환" aria-pressed="true"><span aria-hidden="true">◇</span><small>3D</small></button><button id="rail-sources" class="rail-button" aria-label="자료 출처 열기" title="자료 출처"><span aria-hidden="true">ⓘ</span><small>출처</small></button></nav>
+    <nav class="console-rail" aria-label="관측 도구"><button id="rail-observe" class="rail-button active" aria-label="관측 패널 열기 또는 닫기" title="관측 패널"><span aria-hidden="true">▤</span><small>관측</small></button><a class="rail-button" href="./simulator.html#scenario=material" aria-label="구월동 재료 변경 시뮬레이션 열기" title="재료 변경 시뮬레이션"><span aria-hidden="true">◧</span><small>재료</small></a><button id="rail-view" class="rail-button" aria-label="3D 보기 전환" title="3D 보기 전환" aria-pressed="true"><span aria-hidden="true">◇</span><small>3D</small></button><button id="rail-sources" class="rail-button" aria-label="자료 출처 열기" title="자료 출처"><span aria-hidden="true">ⓘ</span><small>출처</small></button></nav>
     <aside class="sidebar" aria-label="관측 정보">
       <div class="panel-heading"><span class="panel-kicker"><i></i> OBSERVATION / 관측 패널</span><button id="panel-close" type="button" aria-label="관측 패널 닫기">−</button></div>
       <section class="controls">
-        <div class="date-control"><label for="scene">분석 기준일 <span>±32일 검색</span></label><select id="scene" disabled><option>자료 불러오는 중</option></select><p id="acquisition" class="muted">Landsat 지표면 온도</p></div>
+        <div class="date-control"><label for="scene">분석 기준일 <span>±32일 검색</span></label><input id="scene" type="date" min="2013-01-01" disabled><p id="acquisition" class="muted">오늘 기준으로 실제 촬영 자료 검색</p></div>
         <div class="layer-control"><label class="switch-row" for="thermal"><span>지표면 온도 표시</span><input id="thermal" type="checkbox" role="switch" checked><span class="switch" aria-hidden="true"></span></label><p class="muted">공기 온도가 아닌 지표면의 온도</p></div>
         <div class="summary"><div><span>현재 화면 평균</span><strong id="mean">—</strong></div><div><span>최저 — 최고</span><strong id="range">—</strong></div></div>
       </section>
@@ -22,13 +22,15 @@
         <a id="building-source" class="inline-link" target="_blank" rel="noopener" hidden>OSM 건물 원자료 ↗</a>
       </section>
       <div class="sidebar-note"><span class="note-mark">i</span><p>높이가 등록된 건물만 3D로 표시합니다. 온도는 약 100m 열적 해상도의 위성 자료로, 개별 건물 측정값이 아닙니다.</p></div>
+      <a class="material-link" href="./simulator.html#scenario=material"><strong>재료 변경 시뮬레이션 ↗</strong><span>구월동 고정 범위 · 계산값, 위성 관측값 아님</span></a>
     </aside>
     <section class="map-panel" aria-label="현재 화면 위성 관측 지도"><div id="map"></div>
+      <div class="collapsed-observation" aria-live="polite"><span>현재 화면 위성 관측 평균</span><strong id="compact-mean">—</strong><small id="compact-date">실제 촬영 자료 검색 중</small><div class="compact-selection"><span id="compact-place">지도를 눌러 위치 확인</span><b id="compact-temperature">—</b></div><button id="compact-open" type="button">관측 패널 열기</button></div>
       <div class="map-title"><span class="location-dot"></span><span>SURFACE TEMPERATURE <b>현재 화면 자동 분석</b></span></div>
       <div id="building-status" class="building-status" role="status">등록 높이 자동 조회</div>
       <div class="view-controls" role="group" aria-label="지도 시점"><button id="view3d" aria-pressed="true">3D</button><button id="view2d" aria-pressed="false">2D</button><button id="zoom-in" aria-label="확대" title="확대">+</button><button id="zoom-out" aria-label="축소" title="축소">−</button><button id="home" aria-label="처음 위치로" title="처음 위치로">⌂</button><button id="fullscreen" aria-label="전체 화면" title="전체 화면" aria-pressed="false">⛶</button></div>
       <div id="map-status" class="map-status" role="status">실제 지도를 불러오고 있습니다…</div>
-      <div class="legend" id="legend"><div><strong><i></i> LANDSAT / 지표면 온도</strong><span>°C</span></div><div class="gradient"></div><div class="legend-ticks"><span>≤24</span><span>30</span><span>36</span><span>42</span><span>≥50</span></div><p>선택일 주변 실제 촬영 자료 · 공기 온도 아님</p></div>
+      <div class="legend" id="legend"><div><strong><i></i> LANDSAT / 지표면 온도</strong><span>°C</span></div><div class="gradient"></div><div class="legend-ticks"><span>≤24</span><span>30</span><span>36</span><span>42</span><span>≥50</span></div><p>기준일 주변 실제 촬영 자료 · 공기 온도 아님</p></div>
       <div class="map-hint">드래그 이동 · 휠 확대 · 우클릭 회전</div>
     </section>
   </main>

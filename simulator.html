@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="다년 Landsat·OpenStreetMap·과거기상으로 분석한 인천 구월동 AI 열섬 저감 3D 시뮬레이터">
+  <meta name="theme-color" content="#101315">
+  <title>GUWOL HEAT ATLAS · 실제 지도 기반 3D 열환경 연구실</title>
+  <link rel="stylesheet" href="src/styles.css">
+  <link rel="stylesheet" href="src/vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="src/atlas.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">본문으로 이동</a>
+<header class="atlas-header"><a class="brand" href="./index.html"><span class="brand-symbol">G<span>°</span></span><span>GUWOL <b>HEAT ATLAS</b><small>구월동 재료 변경 모의실험</small></span></a><nav aria-label="주요 메뉴"><a href="./index.html">← 실측 온도 지도</a><a class="active" href="#main">재료 실험</a><a href="#compare">시나리오 비교</a></nav><a class="method-link" href="methodology.html">데이터와 방법론 ↗</a></header>
+
+  <main id="main"><p style="margin:12px auto;max-width:1200px;padding:10px 14px;border:1px solid #d9cab0;border-radius:8px;background:#fff8e9;color:#66491c;font-size:13px">이 화면의 재료 변경 결과는 구월동 고정 범위의 연구·교육용 계산값입니다. 현재 지도에서 가져온 위성 관측 온도와 구분해 보세요. <a href="./index.html">실제 관측 지도로 돌아가기 ↗</a></p><section class="atlas" aria-labelledby="spatial-title">
+  <div class="atlas-heading"><div><p class="eyebrow">INCHEON, SOUTH KOREA / 37.4474° N · 126.7063° E</p><h1 id="spatial-title">실제 지도로 읽는<span>구월동</span></h1></div><div class="atlas-status"><span class="research-badge">연구 · 교육용 모델</span><span id="status" role="status">도시를 준비하고 있습니다</span></div></div>
+  <div class="atlas-workspace">
+    <aside class="explorer" aria-label="지도 탐색 설정"><div class="panel-caption"><span>탐색 설정</span><span>01 / EXPLORE</span></div>
+      <label class="field-label" for="metric-3d">어떤 열을 볼까요?</label><select id="metric-3d"><optgroup label="시뮬레이션 · 선택한 시각"><option value="temperature" selected>모의 지표면온도</option><option value="delta">현재 대비 온도 변화</option><option value="potential">열퍼텐셜</option></optgroup><optgroup label="위성 관측 · 시나리오 공통"><option value="frequency">반복 고온 빈도</option><option value="mean">다년 평균 LST</option><option value="p90">다년 고온 P90</option><option value="trend">상대 열추세</option><option value="ndvi">중앙 NDVI</option><option value="scene">개별 위성 장면 LST</option></optgroup></select>
+      <p id="metric-description" class="help-text">촬영일마다 동네에서 가장 뜨거운 상위 20%에 포함된 빈도입니다.</p>
+      <label class="field-label" for="scenario-3d">도시 시나리오</label><select id="scenario-3d"><option value="baseline" selected>01 · 현재 구월동</option><option value="material">02 · 재료 물성 변경</option><option value="optimized">03 · AI 재료·위치 최적화</option></select>
+      <p class="help-text">동일 기상·형상·변경 셀 수에서 비교합니다. AI는 재료 종류와 위치를 함께 선택합니다.</p>
+      <label class="field-label" for="scene-date-3d">위성 촬영일</label><select id="scene-date-3d"></select>
+      <label class="field-label" for="exaggeration-3d">건물 높이 배율 <output id="exaggeration-output">1.0×</output></label><input id="exaggeration-3d" type="range" min="0.6" max="3" value="1.0" step="0.1">
+      <div class="scene-buttons"><button id="rotate-left" class="icon-button" aria-label="왼쪽으로 회전">↺</button><button id="reset-view" class="icon-button">전체 보기</button><button id="rotate-right" class="icon-button" aria-label="오른쪽으로 회전">↻</button></div>
+      <div class="explorer-foot"><strong>실제 지도 위의 열 분석</strong><p>OSM 건물 윤곽 · 도로 · 공원<br>열 자료: 약 108 × 167 m / 셀</p><a href="#experiment-title">실험 조건 조정 ↓</a></div>
+    </aside>
+    <div class="map-stage" id="map-stage"><div class="canvas-3d-shell"><canvas id="city-3d" tabindex="0" aria-label="실제 구월동 지도"></canvas></div><div class="map-corner"><span class="map-kicker">GUWOL / URBAN FIELD</span><span>도시 형상 × 열 분포</span></div><div class="map-coordinate">N ↑<small>구월1–4동 생활권</small></div><div class="map-instructions">드래그 이동 · 오른쪽 드래그 회전 · 휠 확대 · 건물 클릭</div></div>
+  </div><p id="detail-3d" class="cell-detail" aria-live="polite">실제 건물이나 지도를 클릭하면 연결된 분석 셀의 열지표를 확인할 수 있습니다.</p>
+  <div class="atlas-footnote"><span><a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> · <a href="https://openfreemap.org/">OpenFreeMap</a> · Landsat 8/9 · Open-Meteo</span><span>실제 건물 윤곽 · 일부 높이 추정 · 열 자료는 분석 격자값</span></div>
+</section>
+    <section class="control-band" aria-labelledby="experiment-title">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">CONTROLLED EXPERIMENT</p>
+          <h2 id="experiment-title">변인 통제</h2>
+        </div>
+        <button id="run-button" class="button primary" type="button">AI 최적화 다시 실행</button>
+      </div>
+      <div class="variable-grid">
+        <article>
+          <strong>독립변인</strong>
+          <p>개입 면적, 목적함수, 지붕·지면 재료와 배치</p>
+        </article>
+        <article>
+          <strong>통제변인</strong>
+          <p>구월동 주변 격자·건물·도로, 동일 기상, 다년 Landsat 열분포, 시드 8132026</p>
+        </article>
+        <article>
+          <strong>종속변인</strong>
+          <p>표면온도, 퍼텐셜 P95, 추적자 체류, 야간 현열, 고온노출</p>
+        </article>
+      </div>
+
+      <div id="dataset-summary" class="dataset-summary" aria-label="구월동 데이터셋 요약"></div>
+
+      <div class="controls">
+        <label>
+          <span>시각 <output id="hour-output">15시</output></span>
+          <input id="hour" type="range" min="0" max="23" value="15">
+        </label>
+        <label>
+          <span>최고기온 가정 <output id="air-output">31°C</output></span>
+          <input id="air" type="range" min="30" max="40" value="34">
+        </label>
+        <label>
+          <span>최대 일사 가정 <output id="solar-output">850 W/m²</output></span>
+          <input id="solar" type="range" min="550" max="1050" step="25" value="850">
+        </label>
+        <label>
+          <span>토양수분 가정 <output id="moisture-output">40%</output></span>
+          <input id="moisture" type="range" min="0" max="100" step="5" value="60">
+        </label>
+        <label>
+          <span>변경 허용 면적 <output id="budget-output">18%</output></span>
+          <input id="budget" type="range" min="5" max="35" value="18">
+        </label>
+        <label>
+          <span>풍향 가정 <output id="wind-output">북서풍</output></span>
+          <input id="wind" type="range" min="0" max="315" step="45" value="0">
+        </label>
+        <label>
+          <span>최적화 목표</span>
+          <select id="objective">
+            <option value="exposure" selected>보행자 고온노출 최소</option>
+            <option value="potential">열퍼텐셜 봉우리 최소</option>
+            <option value="residence">열 추적자 체류시간 최소</option>
+            <option value="night">야간 열방출 최소</option>
+          </select>
+        </label>
+        <label>
+          <span>시각화 레이어</span>
+          <select id="layer">
+            <option value="potential" selected>열퍼텐셜 + 등고선</option>
+            <option value="temperature">지표온도</option>
+            <option value="materials">재료·토지피복</option>
+            <option value="information">정보행렬 강도</option>
+          </select>
+        </label>
+        <label>
+          <span>사용자 배경 영상(선택)</span>
+          <input id="basemap" type="file" accept="image/png,image/jpeg,image/webp">
+        </label>
+        <label>
+          <span>열 레이어 불투명도 <output id="opacity-output">76%</output></span>
+          <input id="map-opacity" type="range" min="35" max="100" value="76">
+        </label>
+        <label class="switch-label">
+          <input id="particles" type="checkbox" checked>
+          <span>가상 열 추적자 애니메이션</span>
+        </label>
+      </div>
+    </section>
+
+    <section class="metric-grid" aria-label="주요 비교 결과">
+      <article class="metric">
+        <span>보행면 평균 열퍼텐셜</span>
+        <strong id="metric-potential">-</strong>
+        <small id="metric-potential-delta">기준 대비</small>
+      </article>
+      <article class="metric">
+        <span>열 추적자 평균 체류</span>
+        <strong id="metric-residence">-</strong>
+        <small id="metric-residence-delta">기준 대비</small>
+      </article>
+      <article class="metric">
+        <span>20–23시 현열 방출</span>
+        <strong id="metric-night">-</strong>
+        <small id="metric-night-delta">기준 대비</small>
+      </article>
+      <article class="metric">
+        <span>선택 시각 고온노출 지수</span>
+        <strong id="metric-exposure">-</strong>
+        <small id="metric-exposure-delta">기준 대비</small>
+      </article>
+    </section>
+
+    <section class="comparison" id="compare" aria-labelledby="map-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">POTENTIAL LANDSCAPE</p>
+          <h2 id="map-title">정보행렬 기반 열퍼텐셜 지도</h2>
+          <p class="section-description">같은 기상·도시 형상에서 현재 상태, 재료만 교체한 경우, AI가 재료와 위치를 함께 선택한 경우를 비교합니다. 두 개입안의 변경 셀 수는 같습니다.</p>
+        </div>
+        <div id="legend" class="legend" aria-label="지도 범례"></div>
+      </div>
+      <div class="map-grid">
+        <figure class="scenario-card scenario-base">
+          <figcaption>
+            <span class="scenario-number">01 · REFERENCE</span>
+            <strong>현재 구월동</strong>
+            <span>OSM 형상 + Landsat LST 보정</span>
+          </figcaption>
+          <div class="canvas-shell"><canvas id="baseline-map" aria-label="기준 도시 열퍼텐셜 지도"></canvas></div>
+          <div id="baseline-summary" class="scenario-summary" aria-live="polite">현재 재료와 타일 배치</div>
+        </figure>
+        <figure class="scenario-card scenario-material">
+          <figcaption>
+            <span class="scenario-number">02 · MATERIAL ONLY</span>
+            <strong>재료 물성만 변경</strong>
+            <span>AI와 같은 변경 셀 수 · 반사율·방사율·열용량·수분 관련 물성 교체</span>
+          </figcaption>
+          <div class="canvas-shell"><canvas id="material-map" aria-label="재료 물성만 변경한 도시 열퍼텐셜 지도"></canvas></div>
+          <div id="material-summary" class="scenario-summary" aria-live="polite">공간 최적화 없음</div>
+        </figure>
+        <figure class="scenario-card scenario-ai">
+          <figcaption>
+            <span class="scenario-number">03 · AI PLACEMENT</span>
+            <strong>AI 재배치 구월동</strong>
+            <span>냉각거점·회랑·쿨루프 공간 최적화</span>
+          </figcaption>
+          <div class="canvas-shell"><canvas id="optimized-map" aria-label="AI 재배치 도시 열퍼텐셜 지도"></canvas></div>
+          <div id="optimized-summary" class="scenario-summary" aria-live="polite">DBSCAN · MCLP · 유전 알고리즘</div>
+        </figure>
+      </div>
+      <p id="cell-detail" class="cell-detail" aria-live="polite">지도를 가리키면 세분화된 보로노이 구역과 정보행렬 Sᵢⱼ = (T, M, u, v, H, W, α, ε)을 확인할 수 있습니다.</p>
+      <div class="flow-equation" aria-label="열 유속 설명">
+        <span>확산</span><code>−D∇Φ</code><span>+</span><span>바람 이류</span><code>λv</code><span>=</span><strong>순 열유속 J</strong>
+      </div>
+    </section>
+
+<section class="spatial-lab" id="observations"><div class="section-heading"><div><p class="eyebrow">THE OBSERVATION RECORD</p><h2>여름의 13개 장면, 같은 동네의 기록</h2></div><span class="method-badge">Landsat 8·9 · 2018–2025</span></div><article class="history-panel">
+          <h3>다년 분석 요약</h3>
+          <div id="history-summary" class="history-summary" aria-label="다년 위성 분석 요약"></div>
+          <h3>사용한 위성 장면</h3>
+          <div id="scene-strip" class="scene-strip" aria-label="Landsat 장면별 평균 지표면온도"></div>
+          <p class="data-note">막대는 각 장면의 구월동 평균 지표면온도입니다. ‘반복 고온’은 서로 다른 날마다 구월동 내부 상위 20%에 포함된 빈도라서, 한 번의 폭염보다 지속적으로 뜨거운 장소를 우선합니다.</p>
+        </article></section>
+
+    <section class="analysis-grid">
+      <article class="panel">
+        <div class="section-heading compact">
+          <div><p class="eyebrow">DIURNAL PROFILE</p><h2>24시간 변화</h2></div>
+          <div class="line-legend"><span class="base-line">현재</span><span class="material-line">재료만</span><span class="opt-line">AI 재배치</span></div>
+        </div>
+        <canvas id="profile-chart" class="chart" aria-label="24시간 열퍼텐셜 비교 그래프"></canvas>
+      </article>
+      <article class="panel">
+        <p class="eyebrow">AI PIPELINE</p>
+        <h2>핫스폿에서 냉각회랑까지</h2>
+        <ol class="pipeline">
+          <li><span>1</span><div><strong>DBSCAN</strong><small id="pipe-dbscan">열 군집 탐지</small></div></li>
+          <li><span>2</span><div><strong>MCLP</strong><small id="pipe-mclp">냉각 거점 선정</small></div></li>
+          <li><span>3</span><div><strong>유전 알고리즘</strong><small id="pipe-ga">재료·녹지 조합 탐색</small></div></li>
+          <li><span>4</span><div><strong>PyTorch 대응 CA</strong><small id="pipe-ca">[시간, 채널, 행, 열] 텐서 연산</small></div></li>
+        </ol>
+      </article>
+    </section>
+
+    <section class="materials" aria-labelledby="materials-title">
+      <div class="section-heading compact">
+        <div><p class="eyebrow">MATERIAL ABSTRACTION</p><h2 id="materials-title">재료를 5개 열 변수로 단순화</h2></div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>표면 (열저감 평가)</th><th>태양반사율 α</th><th>열방사율 ε</th><th>열저장</th><th>증발·투수</th><th>출처 구분</th></tr></thead>
+          <tbody id="material-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="caveat" aria-labelledby="meaning-title">
+      <div><p class="eyebrow">INTERPRETATION</p><h2 id="meaning-title">입자는 비유이고, 유속은 계산입니다</h2></div>
+      <p>점들은 실제 분자가 아니라 열에너지의 순전달을 보여주는 가상 추적자입니다. Landsat LST는 보행 높이 대기온도와 다르며, 다년 합성도 촬영일 기상의 영향을 완전히 제거하지 못합니다. 공개자료에 없는 건물 재질·세부 높이·보행량은 재질 사전값과 대리변수입니다. 따라서 결과는 개입 후보지 선별용이며 정책 판단 전 현장 기온·일사·재질·유동 관측과 CFD·WRF·ENVI-met 교차검증이 필요합니다.</p>
+    </section>
+  </main>
+
+  <footer>
+    <p>Urban Heat Potential Lab · 연구·교육용 오픈소스 · GUWOL HEAT ATLAS 3.0</p>
+    <nav aria-label="프로젝트 문서"><a href="README.md">README</a><a href="methodology.html">방법론</a><a href="LICENSE">MIT License</a></nav>
+  </footer>
+
+  <noscript>이 시뮬레이터를 사용하려면 JavaScript가 필요합니다.</noscript>
+  <script type="module" src="src/app.js"></script>
+</body>
+</html>
