@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {MATERIAL} from '../src/materials.js';
+import {ASSUMED_SUNLIGHT,ASSUMED_MOISTURE,MATERIAL_CHOICES,materialEnergy,circleAt} from '../src/material-scenario.js';
+
+assert.equal(ASSUMED_SUNLIGHT,800);
+assert.equal(ASSUMED_MOISTURE,0.4);
+assert.ok(MATERIAL_CHOICES.ground.every(item=>item.ground));
+assert.ok(MATERIAL_CHOICES.roof.every(item=>item.building));
+const pavement=materialEnergy(MATERIAL.asphalt,MATERIAL.coolPave);
+assert.equal(pavement.before,760);
+assert.equal(pavement.after,400);
+assert.equal(pavement.change,-360);
+const greenRoof=materialEnergy(MATERIAL.blackRoof,MATERIAL.greenRoof);
+assert.ok(greenRoof.change<0);
+assert.equal(materialEnergy(MATERIAL.asphalt,MATERIAL.asphalt).change,0);
+assert.throws(()=>materialEnergy(MATERIAL.asphalt,MATERIAL.grass,-1));
+const patch=circleAt([126.7,37.4],25);
+assert.equal(patch.coordinates[0].length,49);
+assert.deepEqual(patch.coordinates[0][0],patch.coordinates[0].at(-1));
+const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
+assert.match(html,/id="material-toggle"[^>]*type="button"/);
+assert.match(html,/id="material-sidebar"|class="sidebar material-sidebar"/);
+assert.doesNotMatch(html,/href="\.\/simulator\.html#scenario=material"/);
+console.log('In-map material experiment: explicit assumptions, energy comparison and map patch verified.');
