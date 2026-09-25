@@ -1,24 +1,16 @@
-name: Deploy observation atlas to GitHub Pages
+name: Test and deploy observation map to GitHub Pages
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: true
 
 jobs:
-  test-and-deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +18,37 @@ jobs:
         with:
           node-version: 22
       - run: npm test
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      # Publish runtime files only: no tests, build scripts, Python, CI config or the
+      # duplicated urban-heat-potential-lab copy. The legacy simulator stays reachable.
+      - name: Assemble site
+        run: |
+          mkdir _site
+          rsync -a ./ _site/ \
+            --exclude '.git' --exclude '.github' --exclude '_site' --exclude '.gitignore' \
+            --exclude 'tests' --exclude 'scripts' --exclude 'python' --exclude 'package.json' \
+            --exclude 'urban-heat-potential-lab' \
+            --exclude 'data/observations.json' --exclude 'data/buildings.geojson'
+          du -sh _site && find _site -type f | wc -l
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
       - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4

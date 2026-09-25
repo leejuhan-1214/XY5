@@ -1,60 +1,217 @@
 <!doctype html>
-<html lang="ko"><head>
-  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#f5f7f4"><meta name="description" content="지도를 이동하면 현재 화면의 실제 Landsat 지표면 온도를 자동 분석합니다.">
-  <title>HEAT:XY5 — 위성 온도 지도</title>
-  <link rel="stylesheet" href="./src/vendor/maplibre-gl.css"><link rel="stylesheet" href="./src/observed.css"><link rel="stylesheet" href="./src/observed-console.css">
-</head><body>
-  <header class="header"><div class="brand"><span class="brand-icon" aria-hidden="true">✳</span><div><h1>HEAT<span>:XY5</span></h1><p>URBAN HEAT OBSERVATION</p></div></div><div class="header-actions"><span class="data-badge"><i></i> LANDSAT 8/9 · 지표면 온도</span><button id="material-toggle" class="header-button material-header" type="button" aria-label="현재 지도에서 재료 변경 실험" aria-pressed="false">◧ <span>재료</span></button><button id="panel-toggle" class="header-button" aria-label="관측 패널 열기 또는 닫기" aria-expanded="true">▤ <span>관측 패널</span></button><button id="sources-open" class="header-button">ⓘ <span>자료 출처</span></button></div></header>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f7f6f2">
+  <meta name="description" content="지도를 움직이면 현재 화면의 Landsat 위성 지표면 온도를 자동으로 분석하고, 높이가 등록된 OSM 건물을 3D로 함께 보여 줍니다.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="HEAT:XY5 — 위성 지표면 온도 지도">
+  <meta property="og:description" content="현재 화면의 Landsat 지표면 온도, 온도 분포, 높이 등록 건물과 재료 변경 모델을 한 지도에서 봅니다.">
+  <meta property="og:url" content="https://leejuhan-1214.github.io/XY5/">
+  <title>HEAT:XY5 — 위성 지표면 온도 지도</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23af4803'/%3E%3Cpath d='M16 7v18M8.2 11.5l15.6 9M8.2 20.5l15.6-9' stroke='%23fde1d5' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
+  <link rel="preconnect" href="https://planetarycomputer.microsoft.com" crossorigin>
+  <link rel="preconnect" href="https://overpass-api.de" crossorigin>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+  <link rel="modulepreload" href="./src/observed-app.js">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+  <link rel="stylesheet" href="./src/vendor/maplibre-gl.css">
+  <link rel="stylesheet" href="./src/observed.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div><h1>HEAT<span>:XY5</span></h1><p>도시 지표면 온도 관측</p></div>
+    </div>
+    <div class="mode-switch" role="group" aria-label="작업 모드">
+      <button id="mode-observe" type="button" aria-pressed="true">관측</button>
+      <button id="material-toggle" type="button" aria-pressed="false">재료 실험</button>
+    </div>
+    <div class="topbar-actions">
+      <button id="sources-open" type="button" class="ghost"><span aria-hidden="true">ⓘ</span><span class="label">자료 출처</span></button>
+      <button id="panel-toggle" type="button" class="ghost icon" aria-controls="panel" aria-expanded="true" aria-label="패널 접기"><span aria-hidden="true" class="panel-icon"></span></button>
+    </div>
+  </header>
+
   <main class="workspace">
-    <nav class="console-rail" aria-label="관측 도구"><button id="rail-observe" class="rail-button active" aria-label="관측 패널 열기 또는 닫기" title="관측 패널"><span aria-hidden="true">▤</span><small>관측</small></button><button id="rail-material" class="rail-button" type="button" aria-label="현재 지도에서 재료 변경 실험" title="재료 변경 실험" aria-pressed="false"><span aria-hidden="true">◧</span><small>재료</small></button><button id="rail-view" class="rail-button" aria-label="3D 보기 전환" title="3D 보기 전환" aria-pressed="true"><span aria-hidden="true">◇</span><small>3D</small></button><button id="rail-sources" class="rail-button" aria-label="자료 출처 열기" title="자료 출처"><span aria-hidden="true">ⓘ</span><small>출처</small></button></nav>
-    <aside class="sidebar observation-sidebar" aria-label="관측 정보">
-      <div class="panel-heading"><span class="panel-kicker"><i></i> OBSERVATION / 관측 패널</span><button id="panel-close" type="button" aria-label="관측 패널 닫기">−</button></div>
-      <section class="controls">
-        <div class="date-control"><label for="scene">분석 기준일 <span>±32일 검색</span></label><input id="scene" type="date" min="2013-01-01" disabled><p id="acquisition" class="muted">오늘 기준으로 실제 촬영 자료 검색</p></div>
-        <div class="layer-control"><label class="switch-row" for="thermal"><span>지표면 온도 표시</span><input id="thermal" type="checkbox" role="switch" checked><span class="switch" aria-hidden="true"></span></label><p class="muted">공기 온도가 아닌 지표면의 온도</p></div>
-        <div class="summary"><div><span>현재 화면 평균</span><strong id="mean">—</strong></div><div><span>최저 — 최고</span><strong id="range">—</strong></div></div>
+    <aside id="panel" class="panel">
+      <section class="sidebar observation-sidebar" aria-label="관측 정보">
+        <div class="block">
+          <div class="field-row">
+            <label for="scene">분석 기준일</label>
+            <input id="scene" type="date" min="2013-04-11" disabled>
+          </div>
+          <p class="hint"><span id="acquisition">촬영 자료 검색 대기</span> · 기준일 ±32일 안의 장면</p>
+        </div>
+
+        <div class="block">
+          <div class="block-head">
+            <h2>현재 화면 지표면 온도</h2>
+            <label class="switch" title="지도에 온도 표시"><input id="thermal" type="checkbox" role="switch" checked aria-label="지도에 지표면 온도 표시"><span aria-hidden="true"></span></label>
+          </div>
+          <div class="stats">
+            <div class="stat hero"><span>평균</span><strong id="mean">—</strong></div>
+            <div class="stat"><span>최저</span><strong id="min">—</strong></div>
+            <div class="stat"><span>최고</span><strong id="max">—</strong></div>
+          </div>
+          <figure class="distribution">
+            <div id="histogram" class="histogram" role="img" aria-label="현재 화면 지표면 온도 분포"></div>
+            <div id="histogram-tip" class="histogram-tip" hidden></div>
+            <div class="ramp" aria-hidden="true"></div>
+            <figcaption class="axis"><span id="axis-min">≤24</span><span id="axis-mid">37</span><span id="axis-max">≥50°C</span></figcaption>
+          </figure>
+          <div class="controls-row">
+            <div class="segmented" role="group" aria-label="색 범위">
+              <button id="scale-stretch" type="button" aria-pressed="true">화면에 맞춤</button>
+              <button id="scale-fixed" type="button" aria-pressed="false">고정 24–50°C</button>
+            </div>
+            <label class="opacity" for="opacity">투명도 <input id="opacity" type="range" min="20" max="90" step="5" value="65"><output id="opacity-value">65%</output></label>
+          </div>
+        </div>
+
+        <div class="block">
+          <h2>자료 품질</h2>
+          <dl class="kv">
+            <div><dt>유효 관측</dt><dd id="coverage">—</dd></div>
+            <div><dt>사용 장면</dt><dd id="scene-count">—</dd></div>
+            <div><dt>3D 높이 등록</dt><dd id="building-coverage">—</dd></div>
+          </dl>
+          <ul id="quality-notes" class="notes"></ul>
+        </div>
+
+        <div class="block selection" aria-live="polite">
+          <h2>선택한 위치</h2>
+          <p id="place" class="place">지도를 눌러 확인하세요</p>
+          <div class="selected-value"><strong id="temperature">—</strong><span id="value-label">위성 지표면 온도</span></div>
+          <dl class="kv">
+            <div><dt>등록 건물 높이</dt><dd id="height">—</dd></div>
+            <div><dt>위치</dt><dd id="coordinates">—</dd></div>
+          </dl>
+          <a id="building-source" class="inline-link" target="_blank" rel="noopener" hidden>OSM 건물 원자료 ↗</a>
+          <button id="material-from-observation" class="cta" type="button">이 위치에서 재료 실험 →</button>
+        </div>
+
+        <p class="footnote">위성 지표면 온도(LST)는 공기 온도가 아니며, 원 해상도 약 100 m 열적외선 자료를 30 m 격자로 제공한 값이라 개별 건물 측정값이 아닙니다. 구름·결측 화소는 비워 두고 채우지 않습니다. 높이가 등록된 OSM 건물만 3D로 표시합니다.</p>
       </section>
-      <section class="selection" aria-live="polite">
-        <div class="selection-title"><span class="eyebrow">SELECTED LOCATION / 선택한 위치</span><span class="crosshair" aria-hidden="true">⌖</span></div><h2 id="place">지도를 눌러 확인하세요</h2>
-        <div class="selected-value"><strong id="temperature">—</strong><span id="value-label">위성 지표면 온도</span></div>
-        <dl class="details"><div><dt>등록 건물 높이</dt><dd id="height">—</dd></div><div><dt>위치</dt><dd id="coordinates">—</dd></div></dl>
-        <a id="building-source" class="inline-link" target="_blank" rel="noopener" hidden>OSM 건물 원자료 ↗</a>
+
+      <section class="sidebar material-sidebar" id="material-sidebar" aria-label="재료 변경 실험">
+        <div class="block">
+          <h2>재료 변경 실험</h2>
+          <p class="hint">지면이나 높이 등록 건물을 누르고 재료를 바꿔 보세요. 위성 관측 온도는 바뀌지 않습니다.</p>
+          <div class="material-target"><span>적용 위치</span><strong id="material-place">지도를 눌러 위치 선택</strong><small id="material-kind">한 번에 한 위치 · 다시 누르면 변경</small></div>
+        </div>
+
+        <div class="block">
+          <label class="field-label" for="material-base">현재 재료 <small>실제 재료 미확인 · 직접 가정</small></label>
+          <select id="material-base"></select>
+          <div class="swap" aria-hidden="true">↓</div>
+          <label class="field-label" for="material-next">변경할 재료</label>
+          <select id="material-next"></select>
+          <div class="material-radius">
+            <label class="field-label" for="material-radius">표시 반경 <strong id="material-radius-value">25 m</strong></label>
+            <input id="material-radius" type="range" min="10" max="100" step="5" value="25">
+            <small>지도에 그리는 시험 면적입니다. 단위면적 결과는 반경과 무관합니다.</small>
+          </div>
+        </div>
+
+        <div class="block results" aria-live="polite">
+          <h2>모델 결과</h2>
+          <div class="result primary">
+            <span>평형 표면온도 (모델)</span>
+            <div class="compare"><b id="model-before">—</b><i aria-hidden="true">→</i><b id="model-after">—</b></div>
+            <strong id="model-change">—</strong>
+          </div>
+          <div class="result">
+            <span>표면 에너지 유입 변화</span>
+            <strong id="material-change">—</strong>
+            <small><span id="material-before">—</span> → <span id="material-after">—</span></small>
+          </div>
+          <div class="sub">
+            <h3>계산 조건</h3>
+            <p id="conditions-source" class="hint">가정값</p>
+            <dl class="kv compact">
+              <div><dt>일사량</dt><dd id="cond-sun">—</dd></div>
+              <div><dt>기온</dt><dd id="cond-air">—</dd></div>
+              <div><dt>상대습도</dt><dd id="cond-humidity">—</dd></div>
+              <div><dt>풍속 (10 m)</dt><dd id="cond-wind">—</dd></div>
+              <div><dt>수분 계수</dt><dd id="cond-moisture">—</dd></div>
+            </dl>
+          </div>
+          <div class="sub">
+            <h3>같은 지점 위성 관측과 비교</h3>
+            <dl class="kv compact">
+              <div><dt>위성 관측 LST</dt><dd id="material-observed">—</dd></div>
+              <div><dt>모델 (현재 재료 가정)</dt><dd id="model-at-observation">—</dd></div>
+              <div><dt>모델 − 관측</dt><dd id="model-residual">—</dd></div>
+            </dl>
+            <p class="hint">촬영 시각 기상으로 계산한 경우에만 비교합니다. 한 화소(원 해상도 약 100 m)에는 여러 재료가 섞여 있어 검증이 아닌 참고값입니다.</p>
+          </div>
+        </div>
+
+        <p class="footnote">정상상태 표면 에너지수지: 흡수 일사 + 대기 장파 = 방출 장파 + 대류 + 전도 + 증발. 열 저장, 그늘, 바람길, 주변 표면의 영향은 넣지 않았습니다. 재료 계수는 문헌 범주값과 모델 가정이며, 결과는 예측이 아닌 민감도 비교입니다.</p>
+        <button id="material-reset" class="secondary" type="button">적용 위치 지우기</button>
       </section>
-      <div class="sidebar-note"><span class="note-mark">i</span><p>높이가 등록된 건물만 3D로 표시합니다. 온도는 약 100m 열적 해상도의 위성 자료로, 개별 건물 측정값이 아닙니다.</p></div>
-      <button id="material-from-observation" class="material-link" type="button"><strong>현재 지도에서 재료 바꾸기 →</strong><span>선택한 지역에 재료를 놓고 모의 변화 확인</span></button>
     </aside>
-    <aside class="sidebar material-sidebar" aria-label="재료 변경 실험">
-      <div class="panel-heading"><span class="panel-kicker"><i></i> MATERIAL / 재료 변경 실험</span><button id="material-close" type="button" aria-label="재료 패널 닫기">−</button></div>
-      <p class="material-intro">현재 지도에서 위치를 눌러 재료를 바꿔 보세요. 위성 관측 온도는 그대로 유지됩니다.</p>
-      <div class="material-target"><span>적용 위치</span><strong id="material-place">지도를 눌러 위치 선택</strong><small id="material-kind">한 번에 한 위치 · 다시 누르면 변경</small></div>
-      <div class="material-fields">
-        <label for="material-base">현재 재료 <small>실제 재료 미등록 · 직접 가정</small></label><select id="material-base"></select>
-        <label for="material-next">변경할 재료</label><select id="material-next"></select>
+
+    <section class="map-panel" aria-label="현재 화면 위성 관측 지도">
+      <div id="map"></div>
+      <div id="map-status" class="map-status" role="status" data-tone="loading"><span class="spinner" aria-hidden="true"></span>지도를 불러오고 있습니다…</div>
+      <div id="building-status" class="building-chip" role="status" hidden></div>
+      <div class="material-map-label">재료 실험 중 · 색은 재료 종류이며 온도가 아닙니다</div>
+
+      <div class="compact-card" aria-live="polite">
+        <div><span>현재 화면 평균</span><strong id="compact-mean">—</strong><small id="compact-date">촬영 자료 검색 중</small></div>
+        <div class="compact-selection"><span id="compact-place">지도를 눌러 위치 확인</span><b id="compact-temperature">—</b></div>
+        <button id="compact-open" type="button">패널 열기</button>
       </div>
-      <div class="material-radius"><label for="material-radius">적용 반경 <strong id="material-radius-value">25 m</strong></label><input id="material-radius" type="range" min="10" max="100" step="5" value="25"><small>지면 선택 시 지도에 표시되는 시험 면적</small></div>
-      <div class="material-results" aria-live="polite"><span>모의 표면 에너지 유입 변화</span><strong id="material-change">—</strong><div><span>현재 재료 가정 <b id="material-before">—</b></span><span>변경 후 <b id="material-after">—</b></span></div></div>
-      <div class="material-observation">선택 지점 위성 관측 <strong id="material-observed">—</strong></div>
-      <p class="material-disclaimer">맑은 낮 일사 800 W/m²·수분 40% 가정. 반사율과 증발 잠재량만 비교한 계산값이며 온도 예측이나 실제 냉각 효과가 아닙니다.</p>
-      <button id="material-reset" class="material-reset" type="button">적용 위치 지우기</button>
-    </aside>
-    <section class="map-panel" aria-label="현재 화면 위성 관측 지도"><div id="map"></div>
-      <div class="collapsed-observation" aria-live="polite"><span>현재 화면 위성 관측 평균</span><strong id="compact-mean">—</strong><small id="compact-date">실제 촬영 자료 검색 중</small><div class="compact-selection"><span id="compact-place">지도를 눌러 위치 확인</span><b id="compact-temperature">—</b></div><button id="compact-open" type="button">관측 패널 열기</button></div>
-      <div class="map-title"><span class="location-dot"></span><span>SURFACE TEMPERATURE <b>현재 화면 자동 분석</b></span></div>
-      <div class="material-map-label">◧ 선택한 면적의 재료 변경 실험 <small>색상은 재료 종류 · 온도 예측 아님</small></div>
-      <div id="building-status" class="building-status" role="status">등록 높이 자동 조회</div>
-      <div class="view-controls" role="group" aria-label="지도 시점"><button id="view3d" aria-pressed="true">3D</button><button id="view2d" aria-pressed="false">2D</button><button id="zoom-in" aria-label="확대" title="확대">+</button><button id="zoom-out" aria-label="축소" title="축소">−</button><button id="home" aria-label="처음 위치로" title="처음 위치로">⌂</button><button id="fullscreen" aria-label="전체 화면" title="전체 화면" aria-pressed="false">⛶</button></div>
-      <div id="map-status" class="map-status" role="status">실제 지도를 불러오고 있습니다…</div>
-      <div class="legend" id="legend"><div><strong><i></i> LANDSAT / 지표면 온도</strong><span>°C</span></div><div class="gradient"></div><div class="legend-ticks"><span>≤24</span><span>30</span><span>36</span><span>42</span><span>≥50</span></div><p>기준일 주변 실제 촬영 자료 · 공기 온도 아님</p></div>
-      <div class="map-hint">드래그 이동 · 휠 확대 · 우클릭 회전</div>
+
+      <div class="view-controls" role="group" aria-label="지도 시점">
+        <button id="view3d" type="button" aria-pressed="true">3D</button>
+        <button id="view2d" type="button" aria-pressed="false">2D</button>
+        <span class="divider" aria-hidden="true"></span>
+        <button id="zoom-in" type="button" aria-label="확대" title="확대">+</button>
+        <button id="zoom-out" type="button" aria-label="축소" title="축소">−</button>
+        <button id="home" type="button" aria-label="처음 위치로" title="처음 위치로">⌂</button>
+        <button id="fullscreen" type="button" aria-label="전체 화면" title="전체 화면" aria-pressed="false">⛶</button>
+      </div>
+
+      <div class="map-legend" id="legend">
+        <div class="legend-head"><strong>지표면 온도</strong><span id="legend-mode">화면 맞춤</span></div>
+        <div class="legend-bar"><div class="ramp"></div><span id="legend-mean" class="legend-mean" hidden></span></div>
+        <div class="legend-ticks"><span id="legend-min">≤24</span><span id="legend-max">≥50°C</span></div>
+        <p>Landsat 8/9 · 공기 온도 아님 · 빈 곳은 구름·결측</p>
+      </div>
+
+      <div class="map-hint">드래그로 이동 · 휠로 확대 · 우클릭 드래그로 회전</div>
     </section>
   </main>
-  <footer><span id="coverage">관측자료 준비 중</span><span>OSM 등록 높이 건물만 3D <em>●</em> LANDSAT 지표면 온도</span></footer>
+
   <dialog id="sources" aria-labelledby="sources-title">
-    <div class="dialog-head"><h2 id="sources-title">자료 출처</h2><button id="sources-close" aria-label="닫기">×</button></div>
-    <div class="source-item"><h3>지표면 온도 · Landsat 8/9</h3><p>USGS Collection 2 Level-2 제품. 원시값을 공식 계수로 °C로 변환하고 구름·그림자·눈·결측 화소를 제외했습니다. 값을 추정해 채우지 않습니다. 다른 촬영일의 유효 관측을 연결할 때도 화소별 촬영일을 보존합니다.</p><a id="scene-source" target="_blank" rel="noopener">선택한 촬영 원자료 ↗</a><div id="used-scenes"></div> <a href="https://www.usgs.gov/landsat-missions/landsat-collection-2-surface-temperature" target="_blank" rel="noopener">USGS 설명 ↗</a></div>
-    <div class="source-item"><h3>실제 지도 · OpenStreetMap</h3><p id="building-provenance">건물 자료 확인 중</p><p>OSM의 height 태그만 높이로 사용합니다. 층수 환산이나 임의 높이는 적용하지 않습니다. 등록값은 현장 실측을 보증하지 않습니다.</p><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors · ODbL ↗</a></div>
-    <p class="source-footnote">지도 이동·확대 후 현재 화면을 다시 분석합니다. 기준일 ±32일의 장면 중 가까운 촬영일부터 최대 4개를 검색해 유효 화소만 사용합니다. 빈 곳은 자료 없음이며, 여러 촬영일이 섞일 수 있습니다. 열적 원해상도는 약 100m이며 표시 격자는 확대 수준에 따라 달라집니다.</p>
+    <div class="dialog-head"><h2 id="sources-title">자료 출처와 처리</h2><button id="sources-close" type="button" aria-label="닫기">×</button></div>
+    <div class="source-item">
+      <h3>지표면 온도 · Landsat 8/9 Collection 2 Level-2</h3>
+      <p>Microsoft Planetary Computer에서 현재 화면(가장자리 20% 여유 포함)의 열 밴드와 QA_PIXEL을 받아 공식 계수(DN × 0.00341802 + 149 K)로 °C로 바꿉니다. 채움·구름·확장 구름·권운·구름 그림자·눈 비트와, 구름 신뢰도 중간 이상·권운 신뢰도 높음 화소를 제외합니다. 값을 추정해 채우지 않습니다.</p>
+      <p>장면 순위는 기준일과의 거리(일)에 장면 구름 비율 10%당 1일을 더한 점수로 정합니다. 최대 4개 장면을 동시에 받아 순위 순서대로 빈 화소만 채우고, 화소별 촬영일을 보존합니다.</p>
+      <div id="used-scenes" class="scene-links"></div>
+      <a href="https://www.usgs.gov/landsat-missions/landsat-collection-2-surface-temperature" target="_blank" rel="noopener">USGS 지표면 온도 제품 설명 ↗</a>
+    </div>
+    <div class="source-item">
+      <h3>지도와 건물 · OpenStreetMap</h3>
+      <p id="building-provenance">건물 자료 확인 중</p>
+      <p>OSM의 height 태그(미터·피트)만 높이로 사용합니다. 층수 환산이나 임의 높이는 적용하지 않으며 등록값은 현장 실측을 보증하지 않습니다. 배경 지도는 OpenFreeMap입니다.</p>
+      <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors · ODbL ↗</a>
+    </div>
+    <div class="source-item">
+      <h3>재료 실험 기상 · Open-Meteo</h3>
+      <p>선택 지점 화소의 실제 촬영 시각에 맞춰 Open-Meteo 재분석(ERA5 기반)·예보 분석의 기온, 상대습도, 10 m 풍속, 순간 일사량을 시간 보간합니다. 격자형 추정값이며 현장 관측이 아닙니다.</p>
+      <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo ↗</a>
+    </div>
   </dialog>
-  <noscript>지도를 보려면 브라우저에서 JavaScript를 켜 주세요.</noscript><script type="module" src="./src/observed-app.js"></script>
-</body></html>
+
+  <noscript>지도를 보려면 브라우저에서 JavaScript를 켜 주세요.</noscript>
+  <script type="module" src="./src/observed-app.js"></script>
+</body>
+</html>

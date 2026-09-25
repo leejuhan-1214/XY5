@@ -1,15 +1,15 @@
 {
-  "name": "urban-heat-potential-lab",
-  "version": "6.0.0",
+  "name": "xy5-heat-observation",
+  "version": "7.0.0",
   "private": true,
   "type": "module",
-  "description": "Guwol actual-map atlas with traceable Landsat observations and explicit OSM building heights",
+  "description": "Current-view Landsat surface temperature map with OSM registered building heights and a material surface-energy-balance experiment",
   "scripts": {
     "start": "npx serve .",
-    "test": "node tests/test_engine.mjs && node tests/test_guwol.mjs && node tests/test_history.mjs && node tests/test_scenarios.mjs && node tests/test_atlas.mjs && node tests/test_map.mjs && node tests/test_observed.mjs && node tests/test_viewport.mjs && node tests/test_live_buildings.mjs && node tests/test_fullscreen.mjs && node tests/test_material_scenario.mjs"
+    "test": "node --test tests/test_*.mjs"
   },
   "license": "MIT",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }

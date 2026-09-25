@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {MATERIAL} from '../src/materials.js';
-import {ASSUMED_SUNLIGHT,ASSUMED_MOISTURE,MATERIAL_CHOICES,materialEnergy,circleAt} from '../src/material-scenario.js';
+import {ASSUMED_SUNLIGHT,ASSUMED_MOISTURE,ASSUMED_CONDITIONS,MATERIAL_CHOICES,SIGMA,materialEnergy,circleAt,skyLongwave,convectionCoefficient,surfaceTemperature,materialTemperature} from '../src/material-scenario.js';
 
 assert.equal(ASSUMED_SUNLIGHT,800);
 assert.equal(ASSUMED_MOISTURE,0.4);
@@ -22,4 +22,22 @@ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');
 assert.match(html,/id="material-toggle"[^>]*type="button"/);
 assert.match(html,/id="material-sidebar"|class="sidebar material-sidebar"/);
 assert.doesNotMatch(html,/href="\.\/simulator\.html#scenario=material"/);
-console.log('In-map material experiment: explicit assumptions, energy comparison and map patch verified.');
+// Steady-state surface energy balance: the solution closes the budget.
+const asphalt=surfaceTemperature(MATERIAL.asphalt);
+const f=asphalt.fluxes;
+assert.ok(Math.abs(f.absorbed+f.longwaveIn-f.latent-f.emitted-f.convective-f.conductive)<1e-6,'energy budget closes');
+assert.ok(asphalt.temperature>45&&asphalt.temperature<65,`asphalt ${asphalt.temperature}`);
+const sky=skyLongwave(30,60);assert.ok(sky>350&&sky<450,`sky longwave ${sky}`);
+assert.ok(Math.abs(convectionCoefficient(2)-13.3)<1e-9);assert.equal(convectionCoefficient(-1),5.7);
+// Physically ordered responses.
+assert.ok(surfaceTemperature(MATERIAL.whitePaint).temperature<surfaceTemperature(MATERIAL.blackRoof).temperature);
+assert.ok(surfaceTemperature(MATERIAL.asphalt,{...ASSUMED_CONDITIONS,wind:6}).temperature<asphalt.temperature,'wind cools');
+assert.ok(surfaceTemperature(MATERIAL.asphalt,{...ASSUMED_CONDITIONS,sunlight:0}).temperature<ASSUMED_CONDITIONS.airTemperature,'no sun: radiative cooling below air');
+assert.ok(surfaceTemperature(MATERIAL.grass,{...ASSUMED_CONDITIONS,moisture:1}).temperature<surfaceTemperature(MATERIAL.grass).temperature,'wetter is cooler');
+const pave=materialTemperature(MATERIAL.asphalt,MATERIAL.coolPave);
+assert.ok(pave.change<-5&&pave.change>-20,`cool pavement ${pave.change}`);
+assert.equal(materialTemperature(MATERIAL.asphalt,MATERIAL.asphalt).change,0);
+for(const bad of [{...ASSUMED_CONDITIONS,humidity:120},{...ASSUMED_CONDITIONS,sunlight:-1},{...ASSUMED_CONDITIONS,wind:NaN},null])assert.throws(()=>surfaceTemperature(MATERIAL.asphalt,bad));
+assert.ok(SIGMA>5.67e-8&&SIGMA<5.671e-8);
+assert.match(html,/id="model-change"/);assert.match(html,/id="conditions-source"/);
+console.log('In-map material experiment: explicit assumptions, energy comparison, surface energy balance and map patch verified.');
