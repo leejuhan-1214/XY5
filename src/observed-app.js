@@ -10,6 +10,16 @@ const celsius=v=>Number.isFinite(v)?`${v.toFixed(1)}°C`:'자료 없음';
 const camera={center:[126.7065,37.4479],zoom:15.35,pitch:55,bearing:-24};
 const readJSON=async url=>{const r=await fetch(url,{signal:AbortSignal.timeout(25000)});if(!r.ok)throw Error(`${url}: ${r.status}`);return r.json();};
 let map,data=null,selected,marker,ready=false,controller,timer,revision=0;
+function setPanel(open){
+  document.body.classList.toggle('panel-collapsed',!open);
+  $('panel-toggle').setAttribute('aria-expanded',String(open));
+  $('rail-observe').classList.toggle('active',open);
+}
+$('panel-toggle').onclick=()=>setPanel(document.body.classList.contains('panel-collapsed'));
+$('panel-close').onclick=()=>setPanel(false);
+$('rail-observe').onclick=()=>setPanel(document.body.classList.contains('panel-collapsed'));
+$('rail-sources').onclick=()=>$('sources-open').click();
+$('rail-view').onclick=()=>$(map?.getPitch()>5?'view2d':'view3d').click();
 const cache=new Map();
 let buildings=emptyBuildings(),buildingController,buildingTimer,buildingRevision=0,lastBuildingRequest=0;
 const buildingCache=new Map();
@@ -104,30 +114,30 @@ async function refresh(){
   }catch(err){if(signal.aborted||current!==revision)return;console.error(err);$('coverage').textContent='현재 화면 분석 실패';status(err.message||'위성 자료 연결 실패',true);}
 }
 function schedule(){clearTimeout(timer);timer=setTimeout(refresh,450);}
-function syncView(){const tilted=map.getPitch()>5;$('view3d').setAttribute('aria-pressed',String(tilted));$('view2d').setAttribute('aria-pressed',String(!tilted));}
+function syncView(){const tilted=map.getPitch()>5;$('view3d').setAttribute('aria-pressed',String(tilted));$('view2d').setAttribute('aria-pressed',String(!tilted));$('rail-view').setAttribute('aria-pressed',String(tilted));$('rail-view').querySelector('small').textContent=tilted?'3D':'2D';}
 async function init(){
-  const [style]=await Promise.all([readJSON('https://tiles.openfreemap.org/styles/liberty'),import('./vendor/maplibre-gl.js')]);
+  const [style]=await Promise.all([readJSON('https://tiles.openfreemap.org/styles/dark'),import('./vendor/maplibre-gl.js')]);
   $('scene').replaceChildren(...['2025-06-05','2024-08-29','2024-06-02'].map(date=>{const o=document.createElement('option');o.value=date;o.textContent=date.replaceAll('-',' . ');return o;}));
   $('scene').disabled=false;$('scene').onchange=()=>{clearAnalysis();schedule();};
   $('building-provenance').textContent='현재 화면의 OSM 등록 높이를 조회합니다. 특정 지역에 제한하지 않으며, 높이 미등록 건물은 평면으로 표시합니다.';
   style.layers=style.layers.filter(layer=>layer.type!=='fill-extrusion');
   for(const layer of style.layers){
     if(layer.type==='symbol'&&JSON.stringify(layer.layout?.['text-field']||'').includes('"name"'))layer.layout['text-field']=['coalesce',['get','name:ko'],['get','name'],['get','name_en']];
-    if(layer['source-layer']==='building'&&layer.type==='fill'){delete layer.maxzoom;layer.paint['fill-color']='#cbd3d1';layer.paint['fill-opacity']=0.75;}
+    if(layer['source-layer']==='building'&&layer.type==='fill'){delete layer.maxzoom;layer.paint['fill-color']='#394952';layer.paint['fill-opacity']=0.75;}
   }
   map=new globalThis.maplibregl.Map({container:'map',style,hash:true,...camera,maxPitch:65,maxZoom:19,minZoom:3,renderWorldCopies:false,attributionControl:false,locale:{'NavigationControl.ZoomIn':'확대','NavigationControl.ZoomOut':'축소','NavigationControl.ResetBearing':'북쪽으로 회전','AttributionControl.ToggleAttribution':'지도 출처'}});
-  map.addControl(new globalThis.maplibregl.AttributionControl({compact:true}));map.addControl(new globalThis.maplibregl.NavigationControl({showCompass:true}),'top-right');map.addControl(new globalThis.maplibregl.ScaleControl({maxWidth:90,unit:'metric'}),'bottom-left');
+  map.addControl(new globalThis.maplibregl.AttributionControl({compact:true}));map.addControl(new globalThis.maplibregl.ScaleControl({maxWidth:90,unit:'metric'}),'bottom-left');
   new ResizeObserver(()=>map.resize()).observe($('map'));
   setupFullscreen($('fullscreen'),()=>map.resize());
   map.getCanvas().setAttribute('aria-label','위성 관측 지도. 방향키로 이동하고 +, - 키로 확대 또는 축소할 수 있습니다.');
-  $('view3d').onclick=()=>map.easeTo({pitch:55,bearing:-24,duration:650});$('view2d').onclick=()=>map.easeTo({pitch:0,bearing:0,duration:650});$('home').onclick=()=>map.flyTo({...camera,duration:900});map.on('pitchend',syncView);
+  $('view3d').onclick=()=>map.easeTo({pitch:55,bearing:-24,duration:650});$('view2d').onclick=()=>map.easeTo({pitch:0,bearing:0,duration:650});$('zoom-in').onclick=()=>map.zoomIn({duration:350});$('zoom-out').onclick=()=>map.zoomOut({duration:350});$('home').onclick=()=>map.flyTo({...camera,duration:900});map.on('pitchend',syncView);
   map.once('load',()=>{
     const firstLabel=map.getStyle().layers.find(x=>x.type==='symbol')?.id;
     map.addSource('observed-temperature',{type:'image',url:imageURL(),coordinates:[[0,1],[1,1],[1,0],[0,0]]});
     map.addLayer({id:'temperature',type:'raster',source:'observed-temperature',paint:{'raster-opacity':0,'raster-resampling':'nearest','raster-fade-duration':0}},firstLabel);
     map.addSource('recorded-buildings',{type:'geojson',data:buildings});
     map.addLayer({id:'building-footprints',type:'fill',source:'recorded-buildings',paint:{'fill-color':'#8fa69d','fill-opacity':0.28,'fill-outline-color':'#6f8b81'}},firstLabel);
-    map.addLayer({id:'recorded-heights',type:'fill-extrusion',source:'recorded-buildings',minzoom:13,filter:['>', ['coalesce',['get','height'],0],0],paint:{'fill-extrusion-height':['get','height'],'fill-extrusion-base':['get','base'],'fill-extrusion-color':'#dce8e1','fill-extrusion-opacity':0.94,'fill-extrusion-vertical-gradient':true}},firstLabel);
+    map.addLayer({id:'recorded-heights',type:'fill-extrusion',source:'recorded-buildings',minzoom:13,filter:['>', ['coalesce',['get','height'],0],0],paint:{'fill-extrusion-height':['get','height'],'fill-extrusion-base':['get','base'],'fill-extrusion-color':'#c6b899','fill-extrusion-opacity':0.92,'fill-extrusion-vertical-gradient':true}},firstLabel);
     map.setLight({anchor:'viewport',position:[1.5,210,40],color:'#fff8e9',intensity:0.4});ready=true;
     map.on('movestart',()=>{clearAnalysis();status('지도 이동 중 · 멈추면 현재 화면을 분석합니다.');});map.on('moveend',schedule);map.on('resize',()=>{clearAnalysis();schedule();});
     map.on('movestart',()=>{cancelBuildings();buildingStatus('이동 후 등록 높이 자동 조회');});map.on('moveend',scheduleBuildings);map.on('resize',scheduleBuildings);
