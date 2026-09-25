@@ -156,3 +156,29 @@ k  = 재료 전도 계수                      (기층 온도를 기온으로 �
 - [Open-Meteo](https://open-meteo.com/): 촬영 시각 기상(재분석·예보 분석)
 
 외부 데이터의 사용 조건과 출처 표기는 서비스별 최신 문서를 확인한다. 코드나 UI에 새 자료를 추가할 때는 취득 시점, 공간 해상도, 측정/추정 여부, 결측 처리, 라이선스를 README와 화면에서 확인할 수 있게 남길 것.
+
+
+### 데이터 출처·처리 기준
+
+| 자료 | 확인할 내용 |
+| --- | --- |
+| [USGS Landsat Collection 2 Surface Temperature](https://www.usgs.gov/landsat-missions/landsat-collection-2-surface-temperature) · [Level-2 스케일 계수 FAQ](https://www.usgs.gov/faqs/how-do-i-use-a-scale-factor-landsat-level-2-science-products) | 현재 지도 LST의 원 제품과 DN→K 변환식(`DN × 0.00341802 + 149`). °C 표시는 여기서 273.15를 뺀다. 분석 기준일과 실제 장면 촬영일을 구분해야 한다. |
+| [USGS Collection 2 QA 밴드](https://www.usgs.gov/landsat-missions/landsat-collection-2-quality-assessment-bands) · [Landsat 8–9 Level-2 제품 가이드](https://d9-wret.s3.us-west-2.amazonaws.com/assets/palladium/production/s3fs-public/media/files/LSDS-1619_Landsat8-9-Collection2-Level2-Science-Product-Guide-v5.pdf) | `QA_PIXEL`의 결측·구름·그림자·눈 비트와 신뢰도 정의. 코드의 `clearPixel` 처리 근거다. |
+| [Microsoft Planetary Computer Landsat Collection 2](https://planetarycomputer.microsoft.com/dataset/group/landsat) · [STAC 문서](https://planetarycomputer.microsoft.com/docs/quickstarts/reading-stac-r/) | `landsat-c2-l2` 장면과 `lwir11`·`qa_pixel` 접근 경로. 온도 제품의 생산 출처는 USGS이고 Microsoft는 제공 플랫폼이다. |
+| [Open-Meteo Historical Weather API](https://open-meteo.com/en/docs/historical-weather-api) · [Historical Forecast API](https://open-meteo.com/en/docs/historical-forecast-api) | 재료 모델에 쓰는 촬영 시각의 격자형 기온·습도·풍속·일사량. 재분석/예보 분석 자료이며 선택 지점의 현장 실측이 아니다. 실제 요청 모델과 해상도는 `src/weather.js` 및 화면 출처 표시를 확인한다. |
+| [OpenStreetMap 저작권·ODbL](https://www.openstreetmap.org/copyright) · [OSM `height` 태그](https://wiki.openstreetmap.org/wiki/Key:height) · [Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) · [OpenFreeMap](https://openfreemap.org/) | 배경 지도, 건물 형상과 등록 높이의 출처 및 표시·재사용 조건. 건물 높이는 모든 객체에 있지 않고 현장 정확도도 보증되지 않는다. |
+
+보고서에 온도값을 인용할 때는 위치·실제 촬영일·Landsat 장면 ID·품질 마스크·접근일을 함께 기록한다. 위성 지표면 온도(LST)는 실시간 기온이나 보행자 체감 온도가 아니다.
+
+### 연구 배경과 모델 검토용 논문
+
+아래 문헌은 연구 질문과 모델의 배경이다. 인용했다고 해서 이 앱이 각 논문의 방법을 모두 구현하거나 논문의 냉각 효과를 선택 지역에서 검증한 것은 아니다.
+
+- Oke, T. R. (1982). [The energetic basis of the urban heat island](https://doi.org/10.1002/qj.49710845502). *Quarterly Journal of the Royal Meteorological Society*, 108, 1–24. 도시 열섬의 에너지수지 기초.
+- Voogt, J. A., & Oke, T. R. (2003). [Thermal remote sensing of urban climates](https://doi.org/10.1016/S0034-4257(03)00079-8). *Remote Sensing of Environment*, 86(3), 370–384. 위성 표면온도와 도시 대기 열환경의 해석 차이.
+- Weng, Q., Lu, D., & Schubring, J. (2004). [Estimation of land surface temperature–vegetation abundance relationship for urban heat island studies](https://doi.org/10.1016/j.rse.2003.11.005). *Remote Sensing of Environment*, 89(4), 467–483. 식생과 지표면 온도의 공간적 관계 분석 사례. 현재 앱은 이 논문의 식생 회귀 모델을 사용하지 않는다.
+- Stewart, I. D., & Oke, T. R. (2012). [Local Climate Zones for Urban Temperature Studies](https://doi.org/10.1175/BAMS-D-11-00019.1). *Bulletin of the American Meteorological Society*, 93(12), 1879–1900. 도시 형태·피복별 비교와 관측 설계의 기준.
+- Brutsaert, W. (1975). [On a derivable formula for long-wave radiation from clear skies](https://doi.org/10.1029/WR011i005p00742). *Water Resources Research*, 11(5), 742–744. 현재 표면 에너지수지 모델의 맑은 하늘 장파복사 근거.
+- Santamouris, M. (2014). [Cooling the cities – A review of reflective and green roof mitigation technologies to fight heat island and improve comfort in urban environments](https://doi.org/10.1016/j.solener.2012.07.003). *Solar Energy*, 103, 682–703. 반사·녹화 지붕 저감 연구의 종합. 논문 속 평균 냉각 효과를 현재 앱의 온도 예측값으로 대입하면 안 된다.
+
+재료별 숫자는 `src/materials.js`의 문헌 범주값·모델 가정을 확인한다. 개별 재료의 현장 물성, 모델의 이동·그늘 효과, 위치별 검증 오차를 위 참고문헌만으로 입증할 수는 없다.
