@@ -1,11 +1,12 @@
 import { observationAt, statistics, temperatureColor, stretchScale, histogram, mercatorY, FIXED_SCALE, TEMPERATURE_RAMP } from './observed-data.js';
 import { footprintPoint } from './footprint.js';
-import { frameFor, loadViewport, containsBounds, FRAME_PADDING, SEARCH_DAYS } from './viewport-data.js';
+import { frameFor, loadViewport, containsBounds, selectSceneRaster, FRAME_PADDING, SEARCH_DAYS } from './viewport-data.js';
 import { setupFullscreen } from './fullscreen.js';
 import { emptyBuildings, buildingBounds, fetchBuildings } from './live-buildings.js';
 import { MATERIAL } from './materials.js';
 import { MATERIAL_CHOICES, ASSUMED_CONDITIONS, materialEnergy, materialTemperature, circleAt } from './material-scenario.js';
 import { fetchWeather } from './weather.js';
+import { analyzeClusters, compareObservations } from './research-analysis.js';
 
 const $ = id => document.getElementById(id);
 const HOME = { center: [126.7065, 37.4479], zoom: 15.35, pitch: 55, bearing: -24 };
@@ -23,7 +24,14 @@ const daysBetween = (a, b) => Math.round(Math.abs(Date.parse(a) - Date.parse(b))
 const state = {
   map: null,
   ready: false,
-  data: null, // the mosaic on screen; it may extend beyond the view (padded request)
+  mosaic: null,
+  sceneId: null,
+  comparison: { a: null, b: null },
+  comparisonMarkers: {},
+  picking: null,
+  analysis: null,
+  stale: false,
+  data: null, // the selected complete scene (or explicit mosaic); it may extend beyond the view (padded request)
   visible: { values: [], stats: statistics([]) },
   scale: { ...FIXED_SCALE, mode: 'stretch' },
   scaleMode: 'stretch', // relative pattern within the view; 'fixed' keeps 24–50 °C for comparing places
@@ -98,7 +106,7 @@ function renderOverlay() {
 function applyOpacity() {
   if (!state.ready) return;
   const on = $('thermal').checked && state.data;
-  state.map.setPaintProperty('temperature', 'raster-opacity', on ? state.opacity : 0);
+  state.map.setPaintProperty('temperature', 'raster-opacity', on ? state.opacity * (state.stale ? 0.35 : 1) : 0);
   document.body.classList.toggle('thermal-off', !$('thermal').checked);
 }
 
@@ -183,7 +191,7 @@ function computeVisible() {
     const { lng, lat } = state.map.unproject(p);
     return [lng, mercatorY(Math.max(-85, Math.min(85, lat)))];
   });
-  const [w, s, e, n] = data.bbox, top = mercatorY(n), bottom = mercatorY(s), values = [];
+  const [w, s, e, n] = data.bbox, top = mercatorY(n), bottom = mercatorY(s), values = [], mask = Array(data.width * data.height).fill(false);
   for (let y = 0; y < data.height; y++) {
     const py = top - (y + 0.5) / data.height * (top - bottom);
     for (let x = 0; x < data.width; x++) {
@@ -193,10 +201,10 @@ function computeVisible() {
         const [xi, yi] = quad[i], [xj, yj] = quad[j];
         if ((yi > py) !== (yj > py) && px < (xj - xi) * (py - yi) / (yj - yi) + xi) inside = !inside;
       }
-      if (inside) values.push(data.values[y * data.width + x]);
+      if (inside) { const i = y * data.width + x; values.push(data.values[i]); mask[i] = true; }
     }
   }
-  state.visible = { values, stats: statistics(values) };
+  state.visible = { values, mask, stats: statistics(values) };
 }
 
 function renderStats() {
@@ -236,20 +244,34 @@ function remember(mosaic) {
 }
 
 function showMosaic(mosaic) {
-  const changed = state.data !== mosaic;
-  state.data = mosaic;
+  const changed = true;
+  state.mosaic = mosaic;
+  state.stale = false;
+  const scenes = mosaic.scenes || [];
+  if (state.sceneId !== 'mosaic' && !scenes.some(scene => scene.source.id === state.sceneId)) state.sceneId = scenes[0]?.source.id || null;
+  state.data = selectSceneRaster(mosaic, state.sceneId);
+  const picker = $('analysis-scene');
+  picker.replaceChildren(...scenes.map(scene => new Option(`${dayOf(scene.source)} · ${scene.source.platform.replace('landsat-', 'Landsat ')} · 경로/행 ${scene.source.id.split('_')[2] || scene.source.id}`, scene.source.id)), new Option('여러 장면 합성 · 탐색용 (군집 분석 불가)', 'mosaic'));
+  picker.disabled = !scenes.length;
+  picker.value = state.sceneId || 'mosaic';
   computeVisible();
   renderStats();
   updateScale(changed);
   renderSources();
   renderQuality();
   updateSelection();
+  renderAnalysis();
+  renderComparison();
   if (state.materialTarget) updateMaterial();
 }
 
 function clearMosaic() {
   revision++; controller?.abort(); clearTimeout(timer);
   state.data = null;
+  state.mosaic = null;
+  state.stale = false;
+  $('analysis-scene').disabled = true;
+  $('analysis-scene').replaceChildren(new Option('자료 수신 대기', ''));
   state.visible = { values: [], stats: statistics([]) };
   applyOpacity();
   renderStats();
@@ -257,6 +279,9 @@ function clearMosaic() {
   renderSources();
   renderQuality();
   updateSelection();
+  renderAnalysis();
+  renderComparison();
+  if (state.materialTarget) updateMaterial();
 }
 
 function schedule(delay = 450) { clearTimeout(timer); timer = setTimeout(refresh, delay); }
@@ -268,19 +293,20 @@ async function refresh() {
   controller = new AbortController();
   const signal = controller.signal;
   if (state.map.getZoom() < MIN_ANALYSIS_ZOOM) {
-    computeVisible(); renderStats(); updateScale();
+    clearMosaic();
     setStatus('지역을 확대하면 현재 화면을 자동으로 분석합니다.');
     return;
   }
   const date = $('scene').value, bounds = viewBounds();
   let reuse;
-  try { reuse = reusableMosaic(bounds, date); } catch (error) { setStatus(error.message, 'warn'); return; }
+  try { reuse = reusableMosaic(bounds, date); } catch (error) { clearMosaic(); setStatus(error.message, 'warn'); return; }
   if (reuse) {
     remember(reuse);
     showMosaic(reuse);
     setStatus(state.visible.stats.count ? '' : '이 화면에서는 유효한 관측이 없습니다. 기준일을 바꾸거나 지도를 옮겨 보세요.', 'warn');
     return;
   }
+  markStale();
   setStatus('현재 화면 위성 자료를 불러오는 중…', 'loading');
   try {
     const frame = frameFor(bounds, { padding: FRAME_PADDING });
@@ -292,8 +318,7 @@ async function refresh() {
   } catch (error) {
     if (signal.aborted || current !== revision) return;
     console.error(error);
-    // Keep the previous mosaic, but describe only the part of it that is still on screen.
-    computeVisible(); renderStats(); updateScale(); renderQuality();
+    clearMosaic();
     setStatus(error.message || '위성 자료 연결 실패', 'error', () => refresh());
   }
 }
@@ -327,17 +352,114 @@ function renderQuality() {
     const offset = dates.length ? Math.max(...dates.map(d => daysBetween(d, data.date))) : 0;
     if (offset > 7) notes.push(['info', `기준일과 실제 촬영일이 최대 ${offset}일 차이 납니다.`]);
     if (data.failedScenes) notes.push(['warn', `장면 ${data.failedScenes}개를 받지 못해 제외했습니다.`]);
-    if (data.partialSearch) notes.push(['warn', '검색된 장면이 100개를 넘어 일부만 비교했습니다.']);
+    if (data.partialSearch) notes.push(['warn', `검색은 최대 3페이지로 제한되며 일부 후보가 남아 있습니다.`]);
+    if (data.candidateLimitReached) notes.push(['info', '후보 중 상위 최대 12개까지만 순서대로 시도합니다.']);
+    if (data.singleScene) notes.push(['info', '현재 지도·통계·고온 영역은 선택한 단일 촬영 장면 기준입니다.']);
+    notes.push(['info', 'QA_PIXEL로 구름을 제외했습니다. ST_QA 온도 불확실도는 아직 분석하지 않습니다.']);
     if (stats.total && stats.count / stats.total < 0.6) notes.push(['warn', '구름·품질 마스크로 화면의 40% 이상이 비어 있습니다.']);
   }
   $('quality-notes').replaceChildren(...notes.map(([tone, text]) => Object.assign(document.createElement('li'), { className: tone, textContent: text })));
   renderBuildingCoverage();
 }
 
+/* ───────────── Same-scene hotspots and A/B observations ───────────── */
+
+function markStale() {
+  if (!state.data) return;
+  state.stale = true;
+  $('analysis-scene').disabled = true;
+  state.visible = { values: [], stats: statistics([]) };
+  renderStats(); updateScale(); updateSelection(); renderAnalysis(); renderComparison();
+  document.body.classList.add('stats-stale');
+  $('acquisition').textContent = '이전 조회 영상 · 이동 후 새 화면을 분석합니다';
+  $('compact-date').textContent = '이전 조회 영상 · 새 화면 분석 대기';
+  $('coverage').textContent = '새 화면 분석 대기';
+  if (state.materialTarget) updateMaterial();
+  applyOpacity();
+}
+
+function renderAnalysis() {
+  state.analysis = null;
+  const data = state.data, stats = state.visible.stats;
+  let reason = '';
+  if (!data || state.stale) reason = '현재 화면의 단일 촬영 장면을 기다리고 있습니다.';
+  else if (!data.singleScene) reason = '합성 지도는 날짜가 섞일 수 있습니다. 위에서 단일 촬영 장면을 선택하세요.';
+  else if (stats.count < 30 || stats.count / stats.total < 0.3) reason = `유효 관측 ${stats.count}화소 · 자료 범위 ${number(stats.total ? 100 * stats.count / stats.total : 0)}%. 30화소·30% 이상이 필요합니다.`;
+  else {
+    state.analysis = analyzeClusters({ values: data.values, width: data.width, height: data.height, bbox: data.bbox, projection: data.projection, mask: state.visible.mask, quantile: 0.9, epsMeters: 250, minPoints: 3 });
+    reason = `촬영 ${dayOf(data.sources[0])} · 현재 화면의 상대적 고온 영역. 이동 시 기준과 군집이 바뀝니다.`;
+  }
+  $('hotspot-status').textContent = reason;
+  const result = state.analysis;
+  $('hot-threshold').textContent = result ? `${celsius(result.threshold)} 이상` : '—';
+  $('hot-share').textContent = result ? `${number(result.hotAreaM2 / 10000, 2)} ha / ${number(result.hotAreaM2 / result.validAreaM2 * 100)}%` : '—';
+  $('hot-clusters').textContent = result ? `${result.clusters.length}개 / ${result.noiseIndices.length}화소` : '—';
+  $('cluster-wrap').hidden = !result?.clusters.length;
+  $('cluster-rows').replaceChildren(...(result?.clusters || []).map(cluster => {
+    const row = document.createElement('tr'), label = document.createElement('td');
+    const button = Object.assign(document.createElement('button'), { type: 'button', textContent: `#${cluster.id}` });
+    button.title = `중심 ${cluster.center[1].toFixed(5)}, ${cluster.center[0].toFixed(5)} · ${cluster.count}화소`;
+    button.onclick = () => state.map.flyTo({ center: cluster.center, zoom: Math.max(15, state.map.getZoom()), duration: 700 });
+    label.append(button, Object.assign(document.createElement('small'), { textContent: `${cluster.center[1].toFixed(4)}, ${cluster.center[0].toFixed(4)} · ${cluster.count}화소` })); row.append(label);
+    for (const text of [number(cluster.areaM2 / 10000, 2), number(cluster.mean), number(cluster.max)]) row.append(Object.assign(document.createElement('td'), { textContent: text }));
+    return row;
+  }));
+  renderHotspotOverlay();
+}
+
+function renderHotspotOverlay() {
+  if (!state.ready) return;
+  const { data, analysis } = state;
+  const show = Boolean(data && analysis && !state.stale && $('hotspots').checked);
+  state.map.setPaintProperty('hotspots-raster', 'raster-opacity', show ? 0.9 : 0);
+  if (!show) return;
+  const canvas = document.createElement('canvas'); canvas.width = data.width; canvas.height = data.height;
+  const ctx = canvas.getContext('2d'), pixels = ctx.createImageData(data.width, data.height);
+  const hot = new Set(analysis.hotIndices);
+  for (const i of hot) {
+    const x = i % data.width, y = Math.floor(i / data.width);
+    const edge = !x || !y || x === data.width - 1 || y === data.height - 1 || !hot.has(i - 1) || !hot.has(i + 1) || !hot.has(i - data.width) || !hot.has(i + data.width);
+    pixels.data.set(edge ? [105, 19, 69, 255] : [154, 31, 92, 55], i * 4);
+  }
+  ctx.putImageData(pixels, 0, 0);
+  const [w, s, e, n] = data.bbox;
+  state.map.getSource('hotspot-mask').updateImage({ url: canvas.toDataURL(), coordinates: [[w, n], [e, n], [e, s], [w, s]] });
+}
+
+function renderComparison() {
+  for (const key of ['a', 'b']) {
+    const point = state.comparison[key];
+    $('pick-' + key).setAttribute('aria-pressed', String(state.picking === key));
+    $('pick-' + key).disabled = !state.data || state.stale;
+    $(key + '-value').textContent = point ? celsius(point.value) : '—';
+    $(key + '-detail').textContent = point ? `${point.lat.toFixed(5)}, ${point.lng.toFixed(5)}\n${point.source ? `촬영 ${dayOf(point.source)} · ${point.source.platform || 'Landsat'}` : '구름·결측 또는 분석 범위 밖'}\n${point.source?.id || ''}${point.building ? `\nOSM 등록 높이 ${number(point.building.height)} m` : ''}` : '위치를 선택하세요';
+  }
+  const { a, b } = state.comparison;
+  const comparison = compareObservations(a, b);
+  $('comparison-result').textContent = state.picking ? `${state.picking.toUpperCase()} 위치를 지도에서 선택하세요.`
+    : !a || !b ? '두 위치를 선택해 주세요. 선택값과 촬영 장면이 함께 저장됩니다.'
+    : comparison.comparable ? `B − A = ${signed(comparison.delta, '°C')} · 같은 장면. 위치 차이이며 재질의 인과 효과는 아닙니다.`
+    : `비교 불가: ${comparison.reason}`;
+}
+
+function pickComparison(lngLat) {
+  const key = state.picking, point = { lng: lngLat.lng, lat: lngLat.lat };
+  if (!key) return;
+  const hit = selectedObservation(point);
+  const rendered = state.map.queryRenderedFeatures(state.map.project([point.lng, point.lat]), { layers: ['recorded-heights', 'building-footprints'] })[0];
+  state.comparison[key] = { ...point, ...hit, building: rendered?.properties };
+  state.comparisonMarkers[key]?.remove();
+  const element = Object.assign(document.createElement('div'), { className: 'ab-marker', textContent: key.toUpperCase() });
+  state.comparisonMarkers[key] = new globalThis.maplibregl.Marker({ element }).setLngLat([point.lng, point.lat]).addTo(state.map);
+  state.picking = null;
+  renderComparison();
+  if (mobile.matches) { setPanel(true); document.querySelector('.comparison-block').scrollIntoView({ block: 'nearest' }); }
+}
+
 /* ───────────── Selection ───────────── */
 
 function selectedObservation(point = state.selected) {
-  if (!point || !state.data) return { value: null, index: null, source: null };
+  if (!point || !state.data || state.stale) return { value: null, index: null, source: null };
   const hit = observationAt(state.data, state.data, point.lng, point.lat);
   return { ...hit, source: hit.index !== null ? state.data.sources[state.data.origins[hit.index]] || null : null };
 }
@@ -348,7 +470,7 @@ function updateSelection() {
   const { building } = point, hit = selectedObservation();
   $('place').textContent = building?.name || (building ? '선택한 건물' : '선택한 지점');
   $('temperature').textContent = state.data ? celsius(hit.value) : '—';
-  $('value-label').textContent = !state.data ? '위성 자료 대기 중' : hit.source ? `위성 지표면 온도 · 촬영 ${dayOf(hit.source)}` : hit.index === null ? '현재 분석 범위 밖' : '이 화소는 구름·결측';
+  $('value-label').textContent = state.stale ? '이전 조회 자료 · 새 화면 분석 대기' : !state.data ? '위성 자료 대기 중' : hit.source ? `위성 지표면 온도 · 촬영 ${dayOf(hit.source)}` : hit.index === null ? '현재 분석 범위 밖' : '이 화소는 구름·결측';
   $('compact-place').textContent = $('place').textContent;
   $('compact-temperature').textContent = $('temperature').textContent;
   $('height').textContent = building ? (Number.isFinite(building.height) ? `${number(building.height, building.height % 1 ? 1 : 0)} m` : '높이 미등록') : '건물 아님';
@@ -385,10 +507,20 @@ function renderBuildingCoverage() {
   else el.textContent = '—';
 }
 
+function clearBuildings() {
+  state.buildings = emptyBuildings();
+  if (state.ready) state.map.getSource('recorded-buildings')?.setData(state.buildings);
+  $('building-provenance').textContent = '현재 화면의 등록 건물 자료를 기다리고 있습니다.';
+  buildingStatus('현재 화면의 등록 건물 조회 대기…');
+}
 function cancelBuildings() { buildingRevision++; buildingController?.abort(); clearTimeout(buildingTimer); }
+
 
 function scheduleBuildings() {
   cancelBuildings();
+  clearBuildings();
+  state.buildingState = 'loading';
+  renderBuildingCoverage();
   buildingTimer = setTimeout(refreshBuildings, Math.max(900, 4500 - (Date.now() - lastBuildingRequest)));
 }
 
@@ -396,6 +528,7 @@ async function refreshBuildings() {
   if (!state.ready || state.map.isMoving()) return;
   const current = buildingRevision, bounds = buildingBounds(viewBounds());
   if (state.map.getZoom() < MIN_BUILDING_ZOOM || !bounds) {
+    clearBuildings();
     state.buildingState = 'zoom';
     buildingStatus('3D 건물은 더 확대하면 표시됩니다');
     renderBuildingCoverage();
@@ -403,6 +536,7 @@ async function refreshBuildings() {
   }
   buildingController = new AbortController();
   const signal = buildingController.signal, key = bounds.map(x => x.toFixed(5)).join(',');
+  clearBuildings();
   state.buildingState = 'loading';
   buildingStatus('등록된 건물 높이 불러오는 중…');
   renderBuildingCoverage();
@@ -424,9 +558,10 @@ async function refreshBuildings() {
   } catch (error) {
     if (signal.aborted || current !== buildingRevision) return;
     console.error(error);
+    clearBuildings();
     state.buildingState = 'error';
     buildingStatus(error.rateLimited ? '건물 서버 혼잡' : '건물 자료 연결 실패', true);
-    $('building-provenance').textContent = '현재 화면의 건물 조회가 실패했습니다. 지도에 이미 표시된 건물은 앞서 조회한 실제 자료입니다.';
+    $('building-provenance').textContent = '현재 화면의 건물 조회가 실패해 이전 형상은 숨겼습니다.';
     renderBuildingCoverage();
   }
 }
@@ -547,6 +682,19 @@ function wireControls() {
   $('scale-fixed').onclick = () => setScaleMode('fixed');
   $('scale-stretch').onclick = () => setScaleMode('stretch');
   $('thermal').onchange = applyOpacity;
+  $('analysis-scene').onchange = () => { state.sceneId = $('analysis-scene').value; if (state.mosaic) showMosaic(state.mosaic); };
+  $('hotspots').onchange = renderHotspotOverlay;
+  for (const key of ['a', 'b']) $('pick-' + key).onclick = () => {
+    state.picking = state.picking === key ? null : key;
+    setScaleMode('fixed');
+    renderComparison();
+    if (mobile.matches && state.picking) setPanel(false);
+  };
+  $('compare-reset').onclick = () => {
+    state.comparison = { a: null, b: null }; state.picking = null;
+    Object.values(state.comparisonMarkers).forEach(marker => marker.remove());
+    state.comparisonMarkers = {}; renderComparison();
+  };
   $('opacity').oninput = () => {
     state.opacity = $('opacity').value / 100;
     $('opacity-value').textContent = `${$('opacity').value}%`;
@@ -576,6 +724,7 @@ function wireControls() {
   updateMaterial(false);
   renderLegend();
   renderHistogram();
+  renderComparison();
 }
 
 function today() {
@@ -593,6 +742,8 @@ function addLayers(map) {
   const firstLabel = map.getStyle().layers.find(x => x.type === 'symbol')?.id;
   map.addSource('observed-temperature', { type: 'image', url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', coordinates: [[0, 1], [1, 1], [1, 0], [0, 0]] });
   map.addLayer({ id: 'temperature', type: 'raster', source: 'observed-temperature', paint: { 'raster-opacity': 0, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 } }, firstLabel);
+  map.addSource('hotspot-mask', { type: 'image', url: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', coordinates: [[0, 1], [1, 1], [1, 0], [0, 0]] });
+  map.addLayer({ id: 'hotspots-raster', type: 'raster', source: 'hotspot-mask', paint: { 'raster-opacity': 0, 'raster-resampling': 'nearest', 'raster-fade-duration': 0 } }, firstLabel);
   map.addSource('recorded-buildings', { type: 'geojson', data: state.buildings });
   map.addLayer({ id: 'building-footprints', type: 'fill', source: 'recorded-buildings', paint: { 'fill-color': '#8fa39a', 'fill-opacity': 0.22, 'fill-outline-color': '#6f857b' } }, firstLabel);
   map.addLayer({ id: 'recorded-heights', type: 'fill-extrusion', source: 'recorded-buildings', minzoom: MIN_BUILDING_ZOOM, filter: ['>', ['coalesce', ['get', 'height'], 0], 0], paint: { 'fill-extrusion-height': ['get', 'height'], 'fill-extrusion-base': ['get', 'base'], 'fill-extrusion-color': '#e9e4da', 'fill-extrusion-opacity': 0.9, 'fill-extrusion-vertical-gradient': true } }, firstLabel);
@@ -606,6 +757,7 @@ function addLayers(map) {
 
 function onMapClick(event) {
   const map = state.map;
+  if (state.picking) { pickComparison(event.lngLat); return; }
   const hit = map.queryRenderedFeatures(event.point, { layers: ['recorded-heights', 'building-footprints'] })[0];
   const original = hit && state.buildings.features.find(f => f.properties.osmId === hit.properties.osmId && f.properties.osmType === hit.properties.osmType);
   const point = original ? footprintPoint(original.geometry) : [event.lngLat.lng, event.lngLat.lat];
@@ -661,7 +813,7 @@ async function init() {
     state.ready = true;
     materialPatch();
     // Keep the current raster on screen while moving: it is georeferenced, so it stays correct.
-    map.on('movestart', () => { clearTimeout(timer); controller?.abort(); document.body.classList.add('stats-stale'); cancelBuildings(); });
+    map.on('movestart', () => { clearTimeout(timer); revision++; controller?.abort(); markStale(); cancelBuildings(); clearBuildings(); state.buildingState = 'loading'; renderBuildingCoverage(); });
     map.on('moveend', () => { schedule(); scheduleBuildings(); });
     map.on('click', onMapClick);
     map.on('mousemove', event => {

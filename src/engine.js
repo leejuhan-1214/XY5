@@ -126,7 +126,8 @@ export function simulate(types, settings, city) {
     }
   }
   let calibrationBias = null;
-  if (city.observedLST && settings.calibrateLST !== false) {
+  // Legacy anchoring is opt-in only; it is never independent validation.
+  if (city.observedLST && settings.calibrateLST === true) {
     const observedHour = settings.observedHour ?? 11;
     calibrationBias = settings.calibrationBias ? Float32Array.from(settings.calibrationBias) : new Float32Array(CELL_COUNT);
     if (!settings.calibrationBias) for (let i = 0; i < CELL_COUNT; i += 1) calibrationBias[i] = city.observedLST[i] - hourly[observedHour][i];
@@ -147,7 +148,7 @@ export function simulate(types, settings, city) {
     }
     sensible.push(flux / Math.max(1, area));
   }
-  return { hourly, sensible, solarAbsorbed, calibrationBias };
+  return { hourly, sensible, solarAbsorbed, calibrationBias, calibrationMode: calibrationBias ? "same-scene anchoring; not validation" : "uncalibrated" };
 }
 
 export function potentialField(types, result, hour, settings, city) {

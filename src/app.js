@@ -10,7 +10,6 @@ const canvases = { base: $("baseline-map"), material: $("material-map"), opt: $(
 const sceneControls = { metric: $("metric-3d"), scenario: $("scenario-3d"), date: $("scene-date-3d"), exaggeration: $("exaggeration-3d") };
 const city = createCity(GUWOL_DATA, GUWOL_HISTORY);
 const baselineTypes = city.types;
-let fixedCalibrationBias = null;
 let materialTypes = Uint8Array.from(baselineTypes);
 let optimizedTypes = Uint8Array.from(baselineTypes), latest = null, plan = null, animation = 0, particles = [], runTimer = 0, basemapImage = null, basemapUrl = "", scene3d = null;
 
@@ -18,7 +17,7 @@ const WIND_NAMES = { 0: "북풍", 45: "북동풍", 90: "동풍", 135: "남동풍
 function settings() {
   const observedPeak = Math.max(...GUWOL_DATA.weather.temperature_2m), observedSolar = Math.max(...GUWOL_DATA.weather.shortwave_radiation);
   const weather = { ...GUWOL_DATA.weather, temperature_2m: GUWOL_DATA.weather.temperature_2m.map(value => value + (+controls.air.value - observedPeak)), shortwave_radiation: GUWOL_DATA.weather.shortwave_radiation.map(value => value * +controls.solar.value / observedSolar) };
-  return { peakAir: +controls.air.value, solar: +controls.solar.value, moisture: +controls.moisture.value / 100, budget: +controls.budget.value, windDeg: +controls.wind.value, objective: controls.objective.value, weather, observedHour: 11, calibrateLST: true, calibrationBias: fixedCalibrationBias };
+  return { peakAir: +controls.air.value, solar: +controls.solar.value, moisture: +controls.moisture.value / 100, budget: +controls.budget.value, windDeg: +controls.wind.value, objective: controls.objective.value, weather, observedHour: 11, calibrateLST: false };
 }
 function updateOutputs() {
   $("hour-output").textContent = `${String(controls.hour.value).padStart(2, "0")}시`;
@@ -200,8 +199,8 @@ function drawProfile() {
 
 function updateLegend() {
   const hour = +controls.hour.value, layer = controls.layer.value;
-  if (layer === "materials") $("legend").innerHTML = `<span>재료색</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ MCLP 거점</span><span>→ 순 열유속</span>`;
-  else { const values = layer === "temperature" ? pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.material.hourly[hour], city), pedestrianValues(latest.opt.hourly[hour], city)) : layer === "information" ? pedestrianValues(informationField(baselineTypes, latest.base, hour), city).concat(pedestrianValues(informationField(materialTypes, latest.material, hour), city), pedestrianValues(informationField(optimizedTypes, latest.opt, hour), city)) : pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.materialField, city), pedestrianValues(latest.optField, city)); $("legend").innerHTML = `<span>${percentile(values, .03).toFixed(0)}</span><span class="gradient"></span><span>${percentile(values, .97).toFixed(0)}${layer === "temperature" ? "°C" : layer === "information" ? " 지수" : " Φ"}</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ 냉각거점</span><span>→ 열유속</span>`; }
+  if (layer === "materials") $("legend").innerHTML = `<span>재료색</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ MCLP 거점</span><span>→ 가상 흐름 벡터</span>`;
+  else { const values = layer === "temperature" ? pedestrianValues(latest.base.hourly[hour], city).concat(pedestrianValues(latest.material.hourly[hour], city), pedestrianValues(latest.opt.hourly[hour], city)) : layer === "information" ? pedestrianValues(informationField(baselineTypes, latest.base, hour), city).concat(pedestrianValues(informationField(materialTypes, latest.material, hour), city), pedestrianValues(informationField(optimizedTypes, latest.opt, hour), city)) : pedestrianValues(latest.baseField, city).concat(pedestrianValues(latest.materialField, city), pedestrianValues(latest.optField, city)); $("legend").innerHTML = `<span>${percentile(values, .03).toFixed(0)}</span><span class="gradient"></span><span>${percentile(values, .97).toFixed(0)}${layer === "temperature" ? "°C" : layer === "information" ? " 지수" : " Φ"}</span><span>— 보로노이 ${voronoi.sites.length}구역</span><span>○ 냉각거점</span><span>→ 가상 흐름 벡터</span>`; }
 }
 
 function updateScenarioSummaries() {
@@ -244,7 +243,7 @@ function run() {
     const material = simulate(materialTypes, modelSettings, city), opt = simulate(optimizedTypes, modelSettings, city); latest = { settings: modelSettings, base, material, opt };
     resetParticles(); render(); metrics();
     $("pipe-dbscan").textContent = `${plan.clusterCount}개 고온 군집 탐지`; $("pipe-mclp").textContent = `${plan.hubs.length}개 냉각 거점 선정`; $("pipe-ga").textContent = `${plan.generations}세대 · ${plan.budgetCount}셀 재배치`; $("pipe-ca").textContent = `[24, 7, ${GRID_H}, ${GRID_W}] 정보텐서 · 144 스텝`;
-    $("status").textContent = `Landsat ${GUWOL_HISTORY.sceneCount}장 · 분석 완료`; $("run-button").disabled = false;
+    $("status").textContent = `과거 교육용 모의 · LST 보정 없음 · 흐름은 가상 벡터`; $("run-button").disabled = false;
   });
 }
 
@@ -304,7 +303,6 @@ controls.air.value = Math.round(Math.max(...GUWOL_DATA.weather.temperature_2m));
 controls.solar.value = Math.round(Math.max(...GUWOL_DATA.weather.shortwave_radiation) / 25) * 25;
 controls.moisture.value = Math.round(GUWOL_DATA.weather.soil_moisture_0_to_7cm[11] * 100 / 5) * 5;
 controls.wind.value = Math.round(GUWOL_DATA.weather.wind_direction_10m[11] / 45) * 45 % 360;
-fixedCalibrationBias = simulate(baselineTypes, { ...settings(), weather: GUWOL_DATA.weather, moisture: GUWOL_DATA.weather.soil_moisture_0_to_7cm[11], calibrationBias: null }, city).calibrationBias;
 const defaultMap = new Image();
 defaultMap.onload = () => { basemapImage = defaultMap; render(); };
 defaultMap.src = "data/guwol-osm-basemap.webp";
