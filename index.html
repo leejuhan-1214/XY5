@@ -6,10 +6,10 @@
   <meta name="theme-color" content="#f7f6f2">
   <meta name="description" content="지도를 움직이면 현재 화면의 Landsat 위성 지표면 온도를 자동으로 분석하고, 높이가 등록된 OSM 건물을 3D로 함께 보여 줍니다.">
   <meta property="og:type" content="website">
-  <meta property="og:title" content="HEAT:XY5 — 위성 지표면 온도 지도">
+  <meta property="og:title" content="HEAT:XY5 — 구월동 도시 열환경 연구">
   <meta property="og:description" content="현재 화면의 Landsat 지표면 온도, 온도 분포, 높이 등록 건물과 재료 변경 모델을 한 지도에서 봅니다.">
   <meta property="og:url" content="https://leejuhan-1214.github.io/XY5/">
-  <title>HEAT:XY5 — 위성 지표면 온도 지도</title>
+  <title>HEAT:XY5 — 구월동 도시 열환경 연구</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23af4803'/%3E%3Cpath d='M16 7v18M8.2 11.5l15.6 9M8.2 20.5l15.6-9' stroke='%23fde1d5' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin>
   <link rel="preconnect" href="https://planetarycomputer.microsoft.com" crossorigin>
@@ -24,13 +24,14 @@
   <header class="topbar">
     <div class="brand">
       <span class="brand-mark" aria-hidden="true"></span>
-      <div><h1>HEAT<span>:XY5</span></h1><p>도시 지표면 온도 관측</p></div>
+      <div><h1>HEAT<span>:XY5</span></h1><p>도시 열환경 · 관측과 모델</p></div>
     </div>
     <div class="mode-switch" role="group" aria-label="작업 모드">
       <button id="mode-observe" type="button" aria-pressed="true">관측</button>
       <button id="material-toggle" type="button" aria-pressed="false">재료 실험</button>
     </div>
     <div class="topbar-actions">
+      <a class="ghost research-nav" href="./research.html">연구실 ↗</a>
       <button id="sources-open" type="button" class="ghost"><span aria-hidden="true">ⓘ</span><span class="label">자료 출처</span></button>
       <button id="panel-toggle" type="button" class="ghost icon" aria-controls="panel" aria-expanded="true" aria-label="패널 접기"><span aria-hidden="true" class="panel-icon"></span></button>
     </div>
@@ -39,12 +40,22 @@
   <main class="workspace">
     <aside id="panel" class="panel">
       <section class="sidebar observation-sidebar" aria-label="관측 정보">
+        <div class="block research-intro">
+          <p class="eyebrow">GUWOL · URBAN HEAT RESEARCH</p>
+          <h2>도시의 열은<br>어디에 집중되는가?</h2>
+          <p>관측에서 고온지역을 찾고, 열 이동 모델과 저감 배치를 비교합니다.</p>
+          <ol class="research-steps"><li class="current">관측·군집 <b>현재 지도</b></li><li>모델·배치 <b>가정 기반</b></li><li>독립 검증 <b>자료 확인</b></li></ol>
+          <a href="./research.html" class="inline-link">7개 연구 질문 · 모델 비교 · 배치 탐색 →</a>
+        </div>
         <div class="block">
           <div class="field-row">
-            <label for="scene">분석 기준일</label>
+            <label for="scene">자료 검색 기준일</label>
             <input id="scene" type="date" min="2013-04-11" disabled>
           </div>
-          <p class="hint"><span id="acquisition">촬영 자료 검색 대기</span> · 기준일 ±32일 안의 장면</p>
+          <p class="hint">기준일 ±32일의 장면을 검색합니다.</p>
+          <label class="field-label scene-label" for="analysis-scene">표시·분석 장면</label>
+          <select id="analysis-scene" disabled><option>자료 수신 대기</option></select>
+          <p class="acquisition" id="acquisition">촬영 자료 검색 대기</p>
         </div>
 
         <div class="block">
@@ -70,6 +81,22 @@
             </div>
             <label class="opacity" for="opacity">투명도 <input id="opacity" type="range" min="20" max="90" step="5" value="65"><output id="opacity-value">65%</output></label>
           </div>
+        </div>
+
+        <div class="block hotspot-block" aria-live="polite">
+          <div class="block-head"><h2>상대적 고온 영역 · DBSCAN</h2><label class="switch"><input id="hotspots" type="checkbox" role="switch" checked aria-label="상대적 고온 영역 표시"><span aria-hidden="true"></span></label></div>
+          <p id="hotspot-status" class="hint">단일 촬영 장면의 유효 관측이 필요합니다.</p>
+          <dl class="kv"><div><dt>90백분위 기준</dt><dd id="hot-threshold">—</dd></div><div><dt>고온 영역 / 유효 면적</dt><dd id="hot-share">—</dd></div><div><dt>군집 / 잡음 화소</dt><dd id="hot-clusters">—</dd></div></dl>
+          <div class="cluster-table-wrap" hidden id="cluster-wrap"><table class="cluster-table"><caption>고온 군집 (누르면 위치로 이동)</caption><thead><tr><th>군집</th><th>면적 ha</th><th>평균 °C</th><th>최고 °C</th></tr></thead><tbody id="cluster-rows"></tbody></table></div>
+          <details class="analysis-method"><summary>계산 기준</summary><p>보라색 윤곽은 현재 화면·동일 장면의 P90 이상 화소입니다. 동률 때문에 비율은 10%보다 클 수 있습니다. DBSCAN eps 250 m, minPts 3(자기 자신 포함). 잡음점은 군집 통계에서 제외합니다. 유효 화소 30개 이상·자료 범위 30% 이상에서 계산합니다. 면적은 화면에 제공된 격자의 근사 면적이며 독립적인 건물 측정값이 아닙니다.</p></details>
+        </div>
+
+        <div class="block comparison-block" aria-live="polite">
+          <h2>A / B 위치 비교</h2>
+          <p class="hint">버튼을 누른 뒤 지도를 선택하세요. 동일 장면의 값만 비교합니다.</p>
+          <div class="compare-actions"><button id="pick-a" type="button" aria-pressed="false">A 선택</button><button id="pick-b" type="button" aria-pressed="false">B 선택</button><button id="compare-reset" type="button">지우기</button></div>
+          <div class="ab-cards"><div><b>A</b><strong id="a-value">—</strong><small id="a-detail">위치를 선택하세요</small></div><div><b>B</b><strong id="b-value">—</strong><small id="b-detail">위치를 선택하세요</small></div></div>
+          <p id="comparison-result" class="comparison-result">두 위치를 선택해 주세요.</p>
         </div>
 
         <div class="block">
@@ -163,6 +190,7 @@
       <div class="material-map-label">재료 실험 중 · 색은 재료 종류이며 온도가 아닙니다</div>
 
       <div class="compact-card" aria-live="polite">
+        <a class="compact-research" href="./research.html">구월동 열환경 · 7개 연구 질문 →</a>
         <div><span>현재 화면 평균</span><strong id="compact-mean">—</strong><small id="compact-date">촬영 자료 검색 중</small></div>
         <div class="compact-selection"><span id="compact-place">지도를 눌러 위치 확인</span><b id="compact-temperature">—</b></div>
         <button id="compact-open" type="button">패널 열기</button>

@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f7f6f2">
+  <meta name="description" content="구월동의 Landsat·Sentinel-2 관측, 고온 군집, 시간별 모델과 제한된 저감 자원의 배치를 비교하는 연구 작업실">
+  <title>구월동 연구 작업실 — HEAT:XY5</title>
+  <link rel="stylesheet" href="./src/research.css">
+</head>
+<body>
+<a class="skip" href="#observations">분석으로 이동</a>
+<header class="top"><a class="brand" href="./">HEAT<span>:XY5</span></a><nav aria-label="사이트"><a href="./">자유 관측 지도 ↗</a><a class="active" href="./research.html" aria-current="page">구월동 연구</a><a href="#methods">자료와 방법</a></nav><span class="version">RESEARCH / 01</span></header>
+<main>
+  <section class="hero">
+    <div><p class="eyebrow">인천광역시 남동구 · 구월동</p><h1>도시의 열을 읽고,<br><span>저감의 위치를 찾다.</span></h1><p class="lede">같은 장소의 위성 관측에서 출발해 고온 군집을 찾고,<br class="desktop"> 동일 조건의 세 모델로 재료와 배치의 차이를 비교합니다.</p></div>
+    <div class="hero-note"><span class="badge">관측 → 모의실험 → 비교</span><strong>숫자마다 출처를,<br>결과마다 조건을.</strong><p>연구 범위는 구월동의 지표 열환경과 도시 열섬입니다. 대기 규모의 열돔 순환은 분석하지 않습니다.<br>위성 지표면 온도는 기온과 다릅니다.</p><a href="#questions">7개의 연구 질문과 현재 상태 ↓</a></div>
+  </section>
+  <div class="step-nav" aria-label="연구 순서"><a href="#observations"><b>01</b> 관측과 관계</a><a href="#clusters"><b>02</b> 고온 군집</a><a href="#models"><b>03</b> 모델·배치</a><a href="#validation"><b>04</b> 독립 비교</a></div>
+  <p id="load-status" class="notice" role="status">출처가 기록된 구월동 자료를 불러오는 중입니다…</p>
+
+  <section id="observations" class="section">
+    <div class="section-heading"><div><p class="eyebrow">01 / 실제 관측</p><h2>어디가 뜨겁고, 무엇과 함께 나타날까?</h2></div><a href="./">다른 지역을 지도에서 탐색 ↗</a></div>
+    <div class="toolbar"><label>위성 촬영 장면<select id="observation-scene" disabled></select></label><label>지도에 표시할 자료<select id="observation-layer"><option value="lst">Landsat 지표면 온도</option><option value="ndvi">Sentinel-2 NDVI</option><option value="ndbi">Sentinel-2 NDBI</option><option value="green">OSM 녹지 면적 비율</option><option value="road">OSM 도로 면적 비율</option><option value="building">OSM 건물 면적 비율</option><option value="landcover">공식 세분류 토지피복</option></select></label><label class="check"><input type="checkbox" id="show-clusters" checked> 고온 군집 경계</label><button id="export-observations" class="secondary" disabled>관측 CSV ↓</button></div>
+    <div class="observe-layout"><div class="map-card"><div class="map-top"><span id="map-layer-label">Landsat LST</span><span id="map-date">—</span></div><canvas id="observation-map" width="864" height="1000" tabindex="0" role="img" aria-label="구월동의 관측 격자 지도. 셀을 눌러 온도와 출처를 확인하세요."></canvas><div class="map-bottom"><span id="map-legend">자료 로딩 중</span><span>↑ 북 · 구월동 연구 격자</span></div><p class="map-credit">배경: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a> · 등록된 지형 형상 · 열 자료는 격자 평균</p></div>
+    <aside class="insights"><div class="metrics" id="observation-metrics"></div><div class="card"><h3>자료의 시점과 품질</h3><p id="observation-provenance" class="muted">—</p><p id="layer-note" class="note">—</p></div><div class="card"><h3>선택한 격자</h3><p id="cell-detail">지도를 누르거나 격자 번호를 선택하세요.</p><label class="inline">격자 번호 <input id="cell-number" type="number" min="1" max="432" value="1"><button id="pick-cell" class="secondary">보기</button></label><p class="note">약 108 × 167 m 분석 격자입니다. 개별 건물의 측정 온도가 아닙니다.</p></div><div class="card"><h3>같은 장면에서 A / B 비교</h3><div class="button-row"><button id="set-a" class="secondary">선택 격자를 A로</button><button id="set-b" class="secondary">선택 격자를 B로</button><button id="clear-ab" class="quiet">지우기</button></div><p id="ab-result" aria-live="polite">서로 다른 두 격자를 선택하세요.</p></div></aside></div>
+    <div class="card relationship"><div><h3>온도와 지표 특성의 공간적 관계</h3><p class="muted">같은 격자의 유효 자료 쌍으로 계산한 Pearson 상관계수 r입니다. 인과관계나 독립 표본 검정 결과를 뜻하지 않습니다.</p></div><div class="table-wrap"><table><thead><tr><th>비교 특성</th><th>자료 날짜</th><th>유효 격자 쌍</th><th>r</th></tr></thead><tbody id="relationship-table"></tbody></table></div><p class="note" id="relationship-note"></p></div>
+    <div class="card relationship"><h3>공식 세분류 토지피복과 고온 영역</h3><p id="cover-note" class="muted"></p><div id="cover-legend" class="cover-legend" aria-label="토지피복 범주색"></div><div class="table-wrap"><table><thead><tr><th>토지피복</th><th>정합 면적 ha</th><th>분율 가중 LST °C</th><th>고온 셀 내 면적 ha</th></tr></thead><tbody id="cover-table"></tbody></table></div><p class="note">각 셀의 피복 면적 분율로 LST를 가중한 기술 통계입니다. 혼합 셀 안에서 피복별 온도를 따로 측정한 값이 아닙니다. 지도는 셀의 최다 피복을 표시합니다.</p></div>
+  </section>
+
+  <section id="clusters" class="section">
+    <div class="section-heading"><div><p class="eyebrow">02 / DBSCAN</p><h2>고온 영역을 군집으로 읽다</h2></div><span class="badge">관측 장면별 분석</span></div>
+    <div class="toolbar"><label>고온 기준<select id="hot-quantile"><option value="0.9">현재 장면 P90 이상</option><option value="0.8">현재 장면 P80 이상</option><option value="0.95">현재 장면 P95 이상</option></select></label><label>이웃 거리 eps (m)<input id="cluster-eps" type="number" value="250" min="100" max="1000" step="25"></label><label>최소 이웃 수<input id="cluster-min" type="number" value="3" min="2" max="20"></label><button id="recluster">군집 다시 계산</button></div>
+    <p id="cluster-summary" class="notice"></p><div class="table-wrap"><table><thead><tr><th>군집</th><th>중심 위도·경도</th><th>면적 (ha)</th><th>평균 LST</th><th>최고 LST</th><th>격자 수</th></tr></thead><tbody id="cluster-table"></tbody></table></div><p class="note">면적은 연구 경계 안으로 분류된 분석 셀의 합입니다. DBSCAN 잡음점도 전체 고온 면적에는 포함되며 군집 면적과 따로 집계합니다. 셀보다 작은 형상은 표현하지 않습니다.</p>
+  </section>
+
+  <section id="models" class="section">
+    <div class="section-heading"><div><p class="eyebrow">03 / 동일 조건의 모의실험</p><h2>같은 자원, 다른 배치</h2></div><span class="badge warm">가정 기반 모델 · 현장 검증 전</span></div>
+    <p class="muted">Model 1은 기준 도시, Model 2는 고정 규칙으로 재료를 변경한 도시, Model 3은 같은 재료 자원량으로 위치를 탐색한 도시입니다. 건물·도로 형상을 이동하는 실험은 아닙니다.</p>
+    <div class="toolbar"><label>개입 가능한 셀 중 변경 비율<input id="budget" type="range" min="0" max="30" step="5" value="10"><output id="budget-value">10%</output></label><label>지도 표시 시각 (KST)<input id="model-hour" type="range" min="0" max="23" value="11"><output id="hour-value">11:00</output></label><label>배치 평가 시각 (KST)<input id="evaluation-hour" type="number" min="1" max="23" step="1" value="11"></label><label class="check"><input id="wind-enabled" type="checkbox" checked> 대기층의 바람 이동 포함</label><label class="check"><input id="show-flux" type="checkbox" checked> 가정한 열 수송 표시</label><button id="run-model" disabled>세 모델 계산하기</button><button id="export-models" class="secondary" disabled>모델 CSV ↓</button></div>
+    <p id="model-status" class="notice" role="status">자료 로딩 후 계산할 수 있습니다.</p>
+    <div class="model-grid"><article class="model-card"><div><span>MODEL 1</span><h3>기준 도시</h3></div><canvas id="model-map-0" width="480" height="550" role="img" aria-label="Model 1 기준 도시 모의 온도"></canvas><p id="model-stats-0">—</p></article><article class="model-card"><div><span>MODEL 2</span><h3>고정 위치 · 재료 변경</h3></div><canvas id="model-map-1" width="480" height="550" role="img" aria-label="Model 2 고정 위치 재료 변경 모의 온도"></canvas><p id="model-stats-1">—</p></article><article class="model-card"><div><span>MODEL 3</span><h3>같은 자원 · 위치 탐색</h3></div><canvas id="model-map-2" width="480" height="550" role="img" aria-label="Model 3 위치 탐색 모의 온도"></canvas><p id="model-stats-2">—</p></article></div>
+    <p id="model-scale" class="note"></p><p id="flux-scale" class="note"></p><div class="table-wrap"><table><thead><tr><th>시나리오</th><th>평균 °C</th><th>최고 °C</th><th>공간 표준편차 °C</th><th>고온 면적 ha</th><th>DBSCAN 군집</th><th>변경 셀</th></tr></thead><tbody id="model-table"></tbody></table></div>
+    <div class="chart-layout"><div class="card"><h3>하루 동안의 평균 표면온도</h3><canvas id="time-chart" width="900" height="310" role="img" aria-label="세 모델의 시간별 평균 표면온도 비교"></canvas><p class="note">초기 상태와 기상 조건은 세 모델이 같습니다. 하루 모의 계산이며 위성의 시간별 관측이 아닙니다.</p></div><div class="card"><h3>배치 탐색의 조건</h3><p id="plan-summary">계산 후 조건과 선택 결과를 표시합니다.</p><p class="note">MCLP는 거리 기반 수요 포괄의 탐욕적 근사입니다. 유전 알고리즘은 제한된 후보 탐색이며 전역 최적해를 보장하지 않습니다.</p></div></div>
+    <details class="card"><summary>열의 이동을 어떻게 해석하나요?</summary><p id="transport-note">표면과 기층의 열 저장·교환, 인접 영역의 교환과 별도 대기층의 바람 이동을 단순화해 계산합니다. 흐름은 모델 가정에 따른 것이며 실제 관측 경로나 보행 높이의 기온이 아닙니다.</p></details>
+  </section>
+
+  <section id="validation" class="section"><div class="section-heading"><div><p class="eyebrow">04 / 관측과 모델의 독립 비교</p><h2>관측값에 맞추지 않고, 오차를 확인하다</h2></div><span class="badge">화소별 LST 보정 없음</span></div><p class="muted">각 촬영일의 기상으로 실행한 Model 1을 같은 촬영 시각의 Landsat LST와 비교합니다. 아래 위성 장면은 모델 온도를 보정하는 데 사용하지 않습니다. 관측 초기화·학습과 분리된 참고 평가이며, 시간별 열 이동 전체의 검증을 뜻하지 않습니다.</p><button id="run-validation" disabled>독립 비교 실행</button><p id="validation-status" class="notice" role="status">자료 로딩 후 사용 가능한 촬영일과 기상을 확인합니다.</p><div class="table-wrap"><table><thead><tr><th>촬영일</th><th>시각 KST</th><th>유효 격자</th><th>MAE °C</th><th>RMSE °C</th><th>평균편향 °C</th><th>R²</th></tr></thead><tbody id="validation-table"></tbody></table></div><p class="note">서로 다른 연도의 토지피복·건물 상태 변화, 격자형 기상과 미확인 재질은 오차 원인이 됩니다. R²는 음수가 될 수 있으며 나쁜 결과도 그대로 표시합니다.</p></section>
+
+  <section id="questions" class="section"><div class="section-heading"><div><p class="eyebrow">RESEARCH QUESTIONS</p><h2>7개의 질문, 현재의 답과 남은 일</h2></div></div><div id="question-cards" class="question-grid"></div></section>
+  <section id="methods" class="section"><div class="section-heading"><div><p class="eyebrow">PROVENANCE</p><h2>자료와 가정을 확인하세요</h2></div><a href="https://github.com/leejuhan-1214/XY5#readme" target="_blank" rel="noopener">코드와 재현 방법 ↗</a></div><div id="source-cards" class="source-grid"></div><div class="card"><h3>공식 세분류 토지피복 자료 연결</h3><p id="landcover-status">자료 상태를 확인하는 중입니다.</p><p class="note">공식 자료의 판본과 원영상 날짜를 따로 표시합니다. 새 자료를 같은 격자로 정합하면 교체해서 볼 수 있습니다. <a href="./data/landcover-import.schema.json" target="_blank">가져오기 JSON 형식 ↗</a></p><label class="file-label">정합된 토지피복 JSON 가져오기<input type="file" id="landcover-file" accept="application/json,.json"></label><p id="landcover-import-status" role="status"></p></div></section>
+</main><footer><span>HEAT:XY5 · 구월동 도시 열환경 연구</span><a href="./">자유 관측 지도로 돌아가기 ↗</a></footer>
+<script type="module" src="./src/research-app.js"></script>
+</body></html>

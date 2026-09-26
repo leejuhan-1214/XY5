@@ -1,7 +1,9 @@
 import { statistics, mercatorY, inverseMercatorY } from './observed-data.js';
 
 export const STAC = 'https://planetarycomputer.microsoft.com/api/stac/v1';
-export const MAX_SCENES = 4;
+export const MAX_SCENES = 12;
+export const SCENE_BATCH_SIZE = 4;
+export const MAX_SEARCH_PAGES = 3;
 export const SEARCH_DAYS = 32;
 // Ranking trade-off: 10 percentage points of scene cloud cover cost as much as one day
 // of distance from the reference date. A 79 %-cloud scene yesterday loses to a clear
@@ -83,6 +85,13 @@ export function mergeObservations(target, values, sourceIndex) {
   return added;
 }
 
+// Select an actual complete acquisition, never a subset of mosaic-owned pixels.
+export function selectSceneRaster(mosaic, sceneId) {
+  const selected = mosaic.scenes?.find(scene => scene.source.id === sceneId);
+  if (!selected) return { ...mosaic, singleScene: false };
+  return { ...mosaic, values: selected.values, sources: [selected.source], origins: selected.values.map(value => Number.isFinite(value) ? 0 : null), singleScene: true };
+}
+
 const dayOf = item => Date.parse(item.properties.datetime.slice(0, 10) + 'T00:00:00Z');
 
 export function sceneScore(item, date) {
@@ -103,50 +112,74 @@ export function rasterURL(item, frame) {
   return `https://planetarycomputer.microsoft.com/api/data/v1/item/bbox/${frame.bbox.join(',')}/${frame.width}x${frame.height}.npy?${params}`;
 }
 
-async function request(url, signal) {
-  const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(45000)]) });
+async function request(url, signal, options = {}) {
+  const response = await fetch(url, { ...options, signal: AbortSignal.any([signal, AbortSignal.timeout(45000)]) });
   if (!response.ok) throw Error(`위성 자료 서버 응답 ${response.status}`);
   return response;
 }
 
-// Scenes are downloaded in parallel but merged strictly in rank order, so the result is
-// identical to a sequential mosaic; once the view is covered the remaining downloads are cancelled.
+// Follow bounded same-service STAC pagination. Never forward a supplied URL to another host.
+export async function searchScenes(url, signal) {
+  const items = [], seen = new Set();
+  let next = { href: url }, pages = 0, previousURL = url;
+  while (next && pages < MAX_SEARCH_PAGES) {
+    const href = new URL(next.href, previousURL).href;
+    previousURL = href;
+    const pageKey = href + JSON.stringify(next.body || {});
+    if (!href.startsWith(STAC + '/') || seen.has(pageKey)) break;
+    seen.add(pageKey);
+    const options = next.method === 'POST' ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(next.body || {}) } : {};
+    const page = await (await request(href, signal, options)).json();
+    items.push(...(page.features || []));
+    pages++;
+    next = page.links?.find(link => link.rel === 'next') || null;
+    if (next && !next.href) break;
+  }
+  return { items: [...new Map(items.map(item => [item.id, item])).values()], partialSearch: Boolean(next), searchPages: pages };
+}
+
+// Download in bounded parallel batches and merge in rank order. Keep complete successful
+// scene rasters: a mosaic's ownership mask cannot reconstruct an individual scene.
 export async function loadViewport(frame, date, signal, onProgress = () => {}) {
   const day = 86400000, target = Date.parse(date + 'T00:00:00Z');
   const interval = [new Date(target - SEARCH_DAYS * day).toISOString(), new Date(target + (SEARCH_DAYS + 1) * day - 1).toISOString()].join('/');
   const params = new URLSearchParams({ collections: 'landsat-c2-l2', bbox: frame.bbox.join(','), datetime: interval, limit: '100', query: JSON.stringify({ 'eo:cloud_cover': { lt: 80 } }) });
   onProgress('위성 촬영 장면 검색 중…');
-  const search = await (await request(`${STAC}/search?${params}`, signal)).json();
-  const candidates = rankScenes(search.features || [], date);
-  const count = frame.width * frame.height;
+  const search = await searchScenes(`${STAC}/search?${params}`, signal);
+  const candidates = rankScenes(search.items, date), count = frame.width * frame.height;
   const result = {
     ...frame, date,
-    values: Array(count).fill(null), origins: Array(count).fill(null), sources: [],
+    values: Array(count).fill(null), origins: Array(count).fill(null), sources: [], scenes: [],
     candidateCount: candidates.length, attemptedScenes: 0, failedScenes: 0,
-    partialSearch: search.links?.some(x => x.rel === 'next') || false,
+    partialSearch: search.partialSearch, searchPages: search.searchPages,
   };
   const chosen = candidates.slice(0, MAX_SCENES);
+  result.candidateLimitReached = candidates.length > chosen.length;
   if (!chosen.length) return result;
   const rest = new AbortController(), combined = AbortSignal.any([signal, rest.signal]);
-  let received = 0;
-  onProgress(`장면 ${chosen.length}개 동시 수신 중…`);
-  const downloads = chosen.map(item => request(rasterURL(item, frame), combined)
-    .then(r => r.arrayBuffer())
-    .then(buffer => { received++; onProgress(`장면 수신 ${received}/${chosen.length}`); return readNPY(buffer); }));
-  downloads.forEach(p => p.catch(() => {}));
+  let covered = false;
   try {
-    for (let i = 0; i < chosen.length; i++) {
-      const item = chosen[i];
-      result.attemptedScenes++;
-      try {
-        const raw = await downloads[i];
-        if (raw.shape[1] !== frame.height || raw.shape[2] !== frame.width) throw Error('화면 격자 불일치');
-        const source = { id: item.id, datetime: item.properties.datetime, platform: item.properties.platform, cloudCover: item.properties['eo:cloud_cover'], url: `${STAC}/collections/landsat-c2-l2/items/${item.id}` };
-        if (mergeObservations(result, temperatures(raw), result.sources.length)) result.sources.push(source);
-        if (statistics(result.values).count / count >= 0.995) break;
-      } catch (err) {
-        if (signal.aborted) throw err;
-        result.failedScenes++;
+    for (let start = 0; start < chosen.length && !covered; start += SCENE_BATCH_SIZE) {
+      const batch = chosen.slice(start, start + SCENE_BATCH_SIZE);
+      onProgress(`장면 ${start + 1}–${start + batch.length}/${chosen.length} 수신 중…`);
+      const downloads = batch.map(item => request(rasterURL(item, frame), combined).then(r => r.arrayBuffer()).then(readNPY));
+      downloads.forEach(promise => promise.catch(() => {}));
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i];
+        result.attemptedScenes++;
+        try {
+          const raw = await downloads[i];
+          if (signal.aborted) throw signal.reason;
+          if (raw.shape[1] !== frame.height || raw.shape[2] !== frame.width) throw Error('화면 격자 불일치');
+          const source = { id: item.id, datetime: item.properties.datetime, platform: item.properties.platform || 'landsat', cloudCover: item.properties['eo:cloud_cover'], url: `${STAC}/collections/landsat-c2-l2/items/${item.id}` };
+          const values = temperatures(raw), validCount = statistics(values).count;
+          if (validCount) result.scenes.push({ source, values, validCount });
+          if (mergeObservations(result, values, result.sources.length)) result.sources.push(source);
+          if (statistics(result.values).count / count >= 0.995) { covered = true; break; }
+        } catch (error) {
+          if (signal.aborted) throw error;
+          result.failedScenes++;
+        }
       }
     }
   } finally {

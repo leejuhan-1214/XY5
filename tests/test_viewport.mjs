@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {frameFor,readNPY,temperatures,mergeObservations,rankScenes,rasterURL,loadViewport,pixelLocation,clearPixel,containsBounds,sceneScore} from '../src/viewport-data.js';
+import {frameFor,readNPY,temperatures,mergeObservations,rankScenes,rasterURL,loadViewport,pixelLocation,clearPixel,containsBounds,sceneScore,selectSceneRaster,searchScenes,STAC,MAX_SEARCH_PAGES} from '../src/viewport-data.js';
 import {observationAt} from '../src/observed-data.js';
 const first=frameFor([126.65,37.4,126.8,37.55]),other=frameFor([129.05,35.14,129.09,35.18]);
 assert.notDeepEqual(first.bbox,other.bbox);
@@ -84,3 +84,40 @@ try{
   assert.equal(covered.sources.length,1);assert.ok(aborted,'remaining download aborted');
 }finally{globalThis.fetch=originalFetch;}
 console.log('Viewport: adaptive grid, padding, QA confidence, cloud-aware ranking, parallel rank-ordered mosaics and failure reporting verified.');
+
+// Complete second-scene values survive even where the first scene owns the mosaic pixel.
+try {
+  globalThis.fetch=async url=>url.includes('/search?')?{ok:true,json:async()=>({features:[sceneA,sceneB]})}
+    :url.includes(sceneB.id)?reply(npy([45540,45540,0,0],[64,64,64,64],[255,255,0,0]),0)
+    :reply(npy([46000,46000,46000,46000],[64,64,64,64],[255,255,255,255]),0);
+  const data=await loadViewport(small,'2025-06-05',new AbortController().signal);
+  const selected=selectSceneRaster(data,sceneA.id);
+  assert.equal(data.scenes.length,2);
+  assert.notEqual(selected.values[0],data.values[0]);
+  assert.equal(selected.values[0],selected.values[3]);
+  assert.deepEqual(selected.sources.map(s=>s.id),[sceneA.id]);
+  assert.deepEqual(selected.origins,[0,0,0,0]);
+  assert.equal(selected.singleScene,true);
+  assert.equal(selectSceneRaster(data,'mosaic').singleScene,false);
+  // Failed/fully cloudy first four acquisitions cannot hide a usable fifth one.
+  const candidates=Array.from({length:7},(_,i)=>item(`2025-06-${String(5+i).padStart(2,'0')}`,0));
+  let rasterRequests=0;
+  globalThis.fetch=async url=> {
+    if(url.includes('/search?'))return {ok:true,json:async()=>({features:candidates})};
+    rasterRequests++;
+    if(url.includes(candidates[0].id))return {ok:false,status:503};
+    return reply(npy([45540,45540,45540,45540],[64,64,64,64],url.includes(candidates[4].id)?[255,255,255,255]:[0,0,0,0]),0);
+  };
+  const recovered=await loadViewport(small,'2025-06-05',new AbortController().signal);
+  assert.ok(rasterRequests>4);assert.equal(recovered.failedScenes,1);
+  assert.deepEqual(recovered.sources.map(s=>s.id),[candidates[4].id]);
+  // Pagination is followed and bounded; foreign links are not fetched.
+  let pages=0;
+  globalThis.fetch=async()=>({ok:true,json:async()=>{pages++;return {features:[candidates[pages-1]],links:[{rel:'next',href:`${STAC}/search?page=${pages+1}`}]};}});
+  const paged=await searchScenes(`${STAC}/search?page=1`,new AbortController().signal);
+  assert.equal(pages,MAX_SEARCH_PAGES);assert.equal(paged.items.length,MAX_SEARCH_PAGES);assert.equal(paged.partialSearch,true);
+  pages=0;
+  globalThis.fetch=async()=>({ok:true,json:async()=>{pages++;return {features:[sceneA],links:[{rel:'next',href:'https://example.com/untrusted'}]};}});
+  assert.equal((await searchScenes(`${STAC}/search`,new AbortController().signal)).partialSearch,true);assert.equal(pages,1);
+}finally{globalThis.fetch=originalFetch;}
+console.log('Scene integrity: complete scenes, fallback beyond four, bounded same-service pagination verified.');

@@ -1,9 +1,9 @@
 {
   "name": "xy5-heat-observation",
-  "version": "7.0.0",
+  "version": "8.0.0",
   "private": true,
   "type": "module",
-  "description": "Current-view Landsat surface temperature map with OSM registered building heights and a material surface-energy-balance experiment",
+  "description": "Landsat observation map and Guwol research workbench with Sentinel-2, land cover, DBSCAN, controlled thermal scenarios and independent evaluation",
   "scripts": {
     "start": "npx serve .",
     "test": "node --test tests/test_*.mjs"
