@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "XY5 official detailed land-cover aligned grid import",
+  "description": "Supply actual source data, not a generated sample. Additional runtime checks enforce bbox/order/legend and null outside the study mask. This describes categorical cover, not measured material or albedo.",
+  "type": "object",
+  "required": ["source", "edition", "sourceCRS", "method", "grid", "classes", "legend"],
+  "properties": {
+    "source": {"type": "string", "format": "uri", "pattern": "^https://"},
+    "edition": {"type": "string", "minLength": 1},
+    "sourceCRS": {"type": "string", "minLength": 1},
+    "method": {"type": "string", "minLength": 1, "description": "Document reprojection, majority-area aggregation and missing data; no bilinear interpolation of classes."},
+    "grid": {
+      "type": "object",
+      "required": ["width", "height", "bbox", "projection", "order"],
+      "properties": {
+        "width": {"const": 24},
+        "height": {"const": 18},
+        "bbox": {"const": [126.6925639, 37.4340681, 126.7218288, 37.4610653]},
+        "projection": {"const": "EPSG:4326"},
+        "order": {"const": "row-major north-to-south"}
+      }
+    },
+    "classes": {"type": "array", "minItems": 432, "maxItems": 432, "items": {"type": ["integer", "null"]}},
+    "legend": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string", "minLength": 1}}
+  }
+}
